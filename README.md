@@ -1,23 +1,60 @@
 # FileGrid PPC
 
-Unified ingestion and verified recovery of smart-meter readings, incidents, private connection documents and drone videos. Spring Boot + Angular + PostgreSQL + MinIO + separate FTP, launched with Docker Compose.
+Prototip pentru ingestia și recuperarea verificabilă a citirilor de contoare, avariilor, documentelor private de racordare și fișierelor de inspecție cu drona.
 
-## Start
+**Spring Boot + Angular + PostgreSQL + MinIO + FTP separat.** Include simulator durabil și două modele ML sintetice, asincrone.
 
-Prerequisites: Docker Engine with usable daemon access, Docker Compose v2, internet for the initial image builds, 16GB RAM and 20GB free disk.
+## Pornire
+
+Premise: Linux, Docker Engine accesibil utilizatorului curent, Docker Compose v2.24+ (testarea configurației: v2.40.3), internet la primul build, aproximativ 16 GB RAM și 20 GB liberi. Java/Node/Python nu sunt necesare pe host pentru Compose.
 
 ```bash
 ./scripts/start.sh
 ```
 
-Open https://localhost:8443 and trust the locally generated certificate for this demo. Credentials are generated in `.runtime/accounts.txt`; no passwords or encryption keys are tracked. Do not delete `.runtime/` while retaining storage volumes: it contains the decryption key. Storage ports are private.
+Interfață: **https://localhost:8443**. Acceptă certificatul local generat pentru demonstrație. Conturile sunt generate în `.runtime/accounts.txt`. Parolele, certificatele și cheia AES nu sunt în Git. Nu șterge `.runtime/` dacă păstrezi datele: cheia este necesară decriptării documentelor. Numai gateway-ul publică un port.
 
-## Collaboration
+**Stare verificată:** build backend/frontend, teste automate și integrare nativă cu PostgreSQL 17, MinIO și FTP reale. **Pornirea completă prin Docker Compose pe o mașină curată nu a fost executată:** utilizatorul curent nu are acces la socket-ul Docker. Validarea YAML Compose nu echivalează cu validarea containerelor. Vezi [rezultatele](docs/VALIDATION.md) și [limitele](docs/LIMITATIONS.md).
 
-Read [AGENTS.md](AGENTS.md), [architecture](docs/ARCHITECTURE.md), [API contract](contracts/openapi.yaml), [integration](docs/INTEGRATION_CONTRACT.md), [test plan](docs/TEST_PLAN.md), [demo](docs/DEMO_PLAN.md) and [limitations](docs/LIMITATIONS.md).
+## Fluxuri
 
-BACKEND owns API/contracts/infrastructure/simulator/ML; FRONTEND owns Angular and browser checks. Both start from the same initial Git commit. No incompatible contract changes without coordination.
+- Contoare: JSON original în Database, identități unice, confirmare după commit și retry durabil al simulatorului.
+- Avarii: metadate în PostgreSQL, atașamente în S3; logurile legacy declarate nesensibile merg în FTP conform politicii.
+- Racordare: AES-256-GCM înainte de stocarea S3; acces per proprietar sau administrator.
+- Drone: multipart de 8 MiB prin API, părți persistente, reluare după restart și SHA-256 complet.
+- ML: Random Forest + DBSCAN + reguli explicabile; disponibilitatea fișierelor rămâne independentă de ML. Date sintetice, fără validare operațională.
 
-## Milestones
+Politicile sunt în `config/storage-policies.yaml`; aplicare prin `docker compose restart api`. Schimbările afectează sesiuni noi. Ratele simulatorului se configurează cu `SIMULATOR_RATE`, `SIMULATOR_METERS` și, pentru retransmisii, `SIMULATOR_DUPLICATE_EVERY` în mediul serviciului.
 
-M0 common scaffold → M1 four-category MVP → M2 synthetic asynchronous ML demo. M3 security/observability and M4 measured scalability/resilience remain explicit further milestones. Last 30 minutes of the two-hour target are reserved for validation.
+## Verificări reproductibile
+
+Cu stack-ul pornit și Python 3.12 disponibil pe host:
+
+```bash
+python3 scripts/smoke-test.py
+python3 scripts/demo-data.py --count 22
+python3 scripts/large-file-test.py --size-mib 1229
+```
+
+Aceste comenzi generează exclusiv fixtures fictive. Testul mare este un test de transport, nu de validare semantică a unui codec video. Testele de încărcare și întrerupere sunt în `scripts/load-test.py` și `scripts/fault-test.sh`.
+
+Verificări pentru dezvoltare:
+
+```bash
+(cd backend && ./mvnw verify)
+(cd frontend && npm ci && npm run build && npm test)
+python3 -m unittest discover -s meter-simulator/tests -v
+python3 -m pip install -r ml-service/requirements.lock
+python3 -m unittest discover -s ml-service/tests -v
+docker compose config --quiet
+```
+
+Backend: Java 21; testele pornesc PostgreSQL 17 temporar fără Docker și trebuie rulate de un utilizator fără privilegii root. Adaptoarele externe sunt simulate în testul Java; smoke-test-ul separat verifică serviciile reale. Frontend: Node 24.15+, Chrome la `/usr/bin/google-chrome` sau `CHROME_BIN` configurat. În CI se folosește Chromium Playwright. `FILEGRID_LIVE=1 npm test` activează suplimentar testul browser cu API-ul local la portul 8080 și conturile `.runtime/`; implicit acel test este omis. Comenzile frontend se rulează din `frontend/`.
+
+## Colaborare și checkpoint
+
+Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de integrare la predare: `develop`.
+
+Citește [AGENTS.md](AGENTS.md), [raportul pentru calculatorul 2](docs/HANDOFF_SECOND_COMPUTER.md), [contractul OpenAPI](contracts/openapi.yaml), [arhitectura](docs/ARCHITECTURE.md), [modelul de date](docs/DATA_MODEL.md), [milestone-urile](docs/MILESTONES.md) și [task-urile frontend](docs/FRONTEND_TASKS.md).
+
+Cerințele originale sunt în `docs/requirements/`. Ele sunt documente de referință; instrucțiunile de execuție ale sesiunii și regulile din AGENTS.md au prioritate pentru agenți.

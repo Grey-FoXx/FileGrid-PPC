@@ -11,3 +11,6 @@
 | ADR-07 | Basic over HTTPS in prototype | Stateless, minimal auth; credentials stay in browser memory | Accepted |
 | ADR-08 | Two-pass download verification | Detect corruption before sending content; doubles storage reads | Accepted |
 | ADR-09 | MinIO from fixed source commit | Community upstream archived/source-only; document maintenance limit | Accepted |
+
+| ADR-10 | Prototype accounts in local properties; category metadata in files.context | Reduce schema/bootstrap work while preserving API; DATA_MODEL.md documents physical representation | Accepted for MVP |
+| ADR-11 | Preserve MinIO built-in stale multipart cleanup | Pinned MinIO rejects AWS AbortIncompleteMultipartUpload lifecycle; tracked sessions also have application cleanup | Accepted with tests pending |

@@ -12,3 +12,11 @@
 *.mkv
 *.log
 .DS_Store
+**/test-results/
+**/playwright-report/
+
+# Local IDE state
+.metals/
+.bloop/
+.bsp/
+.scala-build/

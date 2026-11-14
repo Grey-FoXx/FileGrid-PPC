@@ -17,3 +17,13 @@ Use feature/backend-core and feature/frontend-core, integrate through develop; m
 
 ## Before commit
 Run backend tests/package, frontend production build, Python tests and compose config when relevant. Record exact checks, blockers and commit in progress files. Smoke-test all categories, DB/S3/FTP routing, SHA-256 and meter deduplication before declaring MVP verified. Docker absence is a verification limitation, never a passing integration result.
+
+## Checkpoint and stop — 2026-11-14
+
+The user explicitly requested final verification, documentation, one local Git checkpoint and a non-force push attempt, followed by stopping. Do not autonomously implement more features after this checkpoint. A later explicit task is required to resume.
+
+Integration branch: develop. Match its exact SHA on both machines before branching. See docs/HANDOFF_SECOND_COMPUTER.md, docs/VALIDATION.md and task lists. BACKEND also owns .github/ CI changes.
+
+Docker config validation is not a container startup test. Native verification used PostgreSQL 17, MinIO and Python FTP; vsftpd/Nginx containers still need validation. Do not overwrite an executable JAR while its Java process is running: stop it or launch an immutable runtime copy for tests.
+
+Local IDE/runtime/test artifacts and generated credentials must remain ignored. No secrets or real personal documents may be committed. HTTPS push currently needs user authentication; never ask for tokens in chat and never force push.

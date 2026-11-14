@@ -1,0 +1,9 @@
+.git
+.runtime
+**/node_modules
+**/target
+**/dist
+**/.angular
+**/test-results
+**/playwright-report
+**/__pycache__

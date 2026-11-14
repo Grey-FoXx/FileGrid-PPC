@@ -1,0 +1,52 @@
+server:
+  port: 8080
+  tomcat:
+    max-http-form-post-size: 11MB
+    threads:
+      max: 40
+spring:
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://postgres:5432/filegrid}
+    username: ${POSTGRES_USER:filegrid}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      maximum-pool-size: 16
+      connection-timeout: 3000
+  servlet:
+    multipart:
+      enabled: false
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    distribution:
+      percentiles-histogram:
+        filegrid.operation: true
+filegrid:
+  policy-file: ${POLICY_FILE:/config/storage-policies.yaml}
+  accounts-file: ${ACCOUNTS_FILE:/run/filegrid/accounts.properties}
+  encryption-key-file: ${ENCRYPTION_KEY_FILE:/run/filegrid/encryption.key}
+  worker-token-file: ${WORKER_TOKEN_FILE:/run/filegrid/worker.token}
+  s3-endpoint: ${S3_ENDPOINT:http://minio:9000}
+  s3-access-key: ${S3_ACCESS_KEY}
+  s3-secret-key: ${S3_SECRET_KEY}
+  s3-bucket: filegrid
+  ftp-host: ${FTP_HOST:ftp}
+  ftp-port: ${FTP_PORT:21}
+  ftp-user: ${FTP_USER:filegrid}
+  ftp-password: ${FTP_PASSWORD}
+logging:
+  level:
+    root: INFO
+    org.springframework: INFO
+  structured:
+    format:
+      console: logstash
