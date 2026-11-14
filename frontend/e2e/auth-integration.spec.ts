@@ -75,9 +75,9 @@ test("latest search and page win while older responses remain pending", async ({
   await pending;
   await page.getByLabel("Caută după nume").fill("new");
   await page.getByRole("button", { name: "Caută", exact: true }).click();
-  await expect(page.locator("tbody")).toContainText("new-result.txt");
+  await expect(page.getByRole("region", { name: "Tabel de date", exact: true }).locator("tbody")).toContainText("new-result.txt");
   release();
-  await expect(page.locator("tbody")).not.toContainText("old-result.txt");
+  await expect(page.getByRole("region", { name: "Tabel de date", exact: true }).locator("tbody")).not.toContainText("old-result.txt");
   const request = page.waitForRequest(req => new URL(req.url()).searchParams.get("page") === "2");
   await page.getByRole("button", { name: "Înainte", exact: false }).click();
   await page.getByRole("button", { name: "Înainte", exact: false }).click();

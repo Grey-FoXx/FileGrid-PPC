@@ -136,3 +136,22 @@
             </dl>
           </section>
         }
+
+<section class="panel operation-panel" aria-label="Traseul unei operații">
+ <div class="panel-heading"><div><span class="eyebrow">DE LA SURSĂ LA STORAGE</span><h2>Traseul unui fișier</h2></div><button class="secondary" (click)="replay = replay + 1">Reia animația</button></div>
+ <div class="form-row"><label>Categorie traseu<select [(ngModel)]="journeyCategory" (change)="journeyId = ''; replay = replay + 1">@for(c of vm.fileCategories();track c){<option [value]="c">{{vm.labels[c]}}</option>}</select></label>
+ <label>Fișier urmărit<select [(ngModel)]="journeyId"><option value="">Primul fișier din categorie</option>@for(f of candidates();track f.id){<option [value]="f.id">{{f.filename}}</option>}</select></label></div>
+ @for (key of [replay + journeyCategory + (file()?.id || '')]; track key) {
+ <ol class="operation-journey">@for(step of steps();track $index){<li [class.observed]="step.known" [style.--step]="$index"><span class="milestone">{{$index+1}}</span><h3>{{step.label}}</h3><p>{{step.detail}}</p><small>{{step.known ? 'Confirmat în datele disponibile' : 'Fără dovadă individuală în datele disponibile'}}</small></li>}</ol>}
+ @if(file();as f){<p class="hash">File ID: {{f.id}} · SHA-256: {{f.sha256}}</p>}
+ <p class="footnote">Animația explică fluxul; nu reproduce timpi interni măsurați. Timestamp-urile intermediare nu sunt expuse de API. Cererile de mai jos sunt capturate efectiv în această sesiune de browser și pot fi corelate în logurile API.</p>
+ @for(t of traces();track t.correlationId){<p class="hash">{{t.at}} · {{t.path}} · HTTP {{t.status}} · {{t.durationMs | number:'1.0-0'}} ms observate în browser<br>X-Correlation-ID: {{t.correlationId}}</p>} @empty {<p>Nu există cereri de upload capturate pentru acest fișier în sesiunea curentă.</p>}
+</section>
+@if(vm.canStats()) {
+<section class="panel"><h2>Performanță pe categorie și storage</h2><p>Valori reale API · fereastră {{vm.windowMinutes() ?? 'nespecificată'}} minute. Combinațiile fără operații: Not measured.</p>
+<filegrid-section-state [state]="vm.states()['technical']" label="metricile tehnice" (retry)="vm.refresh()" />
+<div class="table-wrap" tabindex="0" role="region" aria-label="Metrici fișiere pe categorie și storage"><table><thead><tr><th>Categorie / operație</th><th>Storage</th><th>p50</th><th>p95</th><th>p99</th><th>Throughput</th><th>Erori</th></tr></thead><tbody>
+@for(s of vm.series();track $index){<tr><td>{{vm.labels[s.category] || s.category}}<small>{{s.operation}}</small></td><td>{{s.storage}}</td><td>{{s.p50Ms | number:'1.0-1'}} ms</td><td>{{s.p95Ms | number:'1.0-1'}} ms</td><td>{{s.p99Ms | number:'1.0-1'}} ms</td><td>{{vm.bytes(s.bytesPerSecond)}}/s<small>{{s.operationsPerSecond | number:'1.0-6'}} op/s</small></td><td>{{s.errorRate * 100 | number:'1.0-1'}}%</td></tr>}@empty{<tr><td colspan="7">Not measured · nu există metrici disponibile.</td></tr>}
+@for(s of unmeasured();track s.category+s.storage){<tr><td>{{vm.labels[s.category]}}</td><td>{{s.storage}}</td><td colspan="5">Not measured · nicio serie disponibilă</td></tr>}
+</tbody></table></div></section>
+} @else {<p class="callout">Metricile agregate necesită rol ADMIN sau DISPATCHER.</p>}

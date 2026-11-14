@@ -8,4 +8,13 @@ import { WorkspaceStore } from "../workspace";
   templateUrl: "./upload.html",
   host: { style: "display:block; min-width:0" },
 })
-export class UploadPage { readonly vm = inject(WorkspaceStore); }
+export class UploadPage {
+ readonly vm = inject(WorkspaceStore);
+ async submit() {
+  const generation = this.vm.generation();
+  if(this.vm.uploads.category === 'INCIDENT' && !this.vm.uploads.incidentId) await this.vm.uploads.createIncident();
+  if(generation !== this.vm.generation()) return;
+  if(this.vm.uploads.category === 'INCIDENT' && !this.vm.uploads.incidentId) return;
+  if(this.vm.uploads.file) await this.vm.uploads.upload();
+ }
+}

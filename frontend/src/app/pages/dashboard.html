@@ -1,7 +1,7 @@
 <section class="page-heading">
           <div>
             <span class="eyebrow">CONTROL ȘI VIZIBILITATE</span>
-            <h1 tabindex="-1">Rețeaua, în perspectivă.</h1>
+            <h1 tabindex="-1">Acasă.</h1>
             <p>Monitorizează fluxurile de date și incidentele din teren.</p>
           </div>
           <button class="primary" (click)="vm.go('upload')">
@@ -36,6 +36,18 @@
             ><small>Mod stabilit de server din volumul recent</small>
           </article>
         </div>
+<section class="panel scenario-panel" aria-label="Scenariu de observabilitate">
+ <div class="panel-heading"><div><span class="eyebrow">NORMAL → STORM</span><h2>Pregătit pentru vârful de trafic</h2></div><span class="badge">SIMULARE LOCALĂ</span></div>
+ <div class="scenario-toggle"><button class="secondary" [class.selected]="scenario === 'NORMAL'" [attr.aria-pressed]="scenario === 'NORMAL'" (click)="scenario = 'NORMAL'">Normal</button><button class="secondary" [class.selected]="scenario === 'STORM'" [attr.aria-pressed]="scenario === 'STORM'" (click)="scenario = 'STORM'">Storm</button></div>
+ <div class="load-preview" [class.peak]="scenario === 'STORM'" aria-hidden="true">@for(n of [1,2,3,4,5,6,7,8,9,10];track n){<i [style.--n]="n"></i>}</div>
+ <p aria-live="polite">{{scenario === 'STORM' ? 'Scenariu: vârf de 10× în categoria avarii. Verifică în metricile reale dacă celelalte categorii rămân stabile.' : 'Scenariu: ingestie continuă, monitorizarea integrității și a disponibilității.'}}</p>
+ @if(scenario === 'STORM'){<p class="callout">Exemplu de alertă de business: disponibilitatea imediată a avariilor ar putea fi în pericol la vârf. Acesta este un exemplu sintetic, fără incident real detectat.</p>}
+ <p class="footnote">Controlul schimbă doar scenariul explicativ. Nu generează trafic, nu modifică modul serverului și nu schimbă metricile de mai jos. Testul real de 10× necesită simulatorul / generatorul de sarcină.</p>
+</section>
+<section class="panel" aria-label="Avertizări de business"><h2>Semnale care necesită atenție</h2>
+ <div aria-live="polite">@for(risk of risks();track risk){<p class="alert error" role="status">{{risk}}</p>} @empty {<p>Nu sunt semnale de eroare în datele accesibile curent. Aceasta nu demonstrează îndeplinirea tuturor garanțiilor de business.</p>}</div>
+ <p class="footnote">Avertizări locale actualizate automat la 5 secunde. Notificarea echipei în afara browserului nu este expusă de API și rămâne nevalidată.</p>
+</section>
         <div class="dashboard-columns">
           <section class="panel">
             <div class="panel-heading">

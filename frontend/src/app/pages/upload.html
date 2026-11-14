@@ -5,9 +5,10 @@
             <p>Politica alege destinația. FileGrid verifică integritatea.</p>
           </div>
         </section>
-        <div class="upload-layout" [class.single-column]="!vm.canIncidents()">
+        <div class="upload-layout single-column">
           <section class="panel">
-            <h2>Detalii transfer</h2>
+            <h2>{{ vm.uploads.category === "INCIDENT" ? "Raportează o avarie" : "Detalii transfer" }}</h2>
+            <p>Completează datele, apoi adaugă opțional un fișier. Raportul apare în dispecerat după confirmarea API-ului.</p>
             @if (vm.uploads.savedForCurrentUser().length && !vm.busy()) {
               <div class="callout session-list">
                 <p>Transferuri salvate: restaurează contextul, apoi selectează fișierul original.</p>
@@ -96,74 +97,10 @@
                 reselectează același fișier pentru reluare.
               </p>
             }
-            <label class="dropzone"
-              ><span class="upload-symbol">↑</span
-              ><strong>{{
-                vm.uploads.file?.name || "Alege fișierul pentru transfer"
-              }}</strong
-              ><small>{{
-                vm.uploads.file
-                  ? vm.bytes(vm.uploads.file.size)
-                  : "Click pentru selectare · transfer exclusiv
-            prin FileGrid"
-              }}</small
-              ><input
-                type="file"
-                aria-label="Fișier pentru transfer"
-                (change)="vm.uploads.selectFile($event)"
-                [disabled]="vm.busy()"
-            /></label>
-            @if (vm.uploads.uploadLabel()) {
-              <div class="progress-label" aria-live="polite">
-                <span>{{ vm.uploads.uploadLabel() }}</span
-                ><strong>{{ vm.uploads.progress() }}%</strong>
-              </div>
-              <progress aria-label="Progres încărcare" [attr.aria-valuetext]="vm.uploads.uploadLabel()" [value]="vm.uploads.progress()" max="100"></progress>
-            }
-            @if (vm.uploads.checksum()) {
-              <div class="hash">
-                <span>SHA-256 ORIGINAL</span><code>{{ vm.uploads.checksum() }}</code>
-              </div>
-            }
-            <div class="actions">
-              <button
-                class="primary"
-                (click)="vm.uploads.upload()"
-                [disabled]="
-                  vm.busy() || !!vm.uploads.recovery() || !vm.uploads.file || (vm.uploads.category === 'INCIDENT' && !vm.uploads.incidentId)
-                "
-              >
-                {{
-                  vm.busy() ? "Transfer în curs…" : "Încarcă / reia transferul →"
-                }}
-              </button>
-              @if (vm.busy() && !vm.uploads.cancelling()) {
-                <button class="secondary" (click)="vm.uploads.pause()">{{ vm.uploads.uploadPhase() === 'verifying' ? 'Oprește urmărirea' : 'Pauză' }}</button>
-              }
-              @if (vm.uploads.activeSession(); as session) {
-                @if (!['AVAILABLE', 'VERIFYING', 'CANCELLED'].includes(session.status) && !vm.uploads.recovery()) {
-                  <button class="secondary" (click)="vm.uploads.cancelUpload()" [disabled]="vm.uploads.cancelling()">
-                    {{ vm.uploads.cancelling() ? 'Se anulează…' : 'Anulează transferul' }}
-                  </button>
-                }
-              }
-              @if (vm.uploads.recovery(); as state) {
-                <p>{{ state.reason }}</p>
-                <button class="secondary" (click)="vm.uploads.restartUpload()" [disabled]="vm.busy()">Începe o sesiune nouă</button>
-              }
-            </div>
-            <button
-              class="text-button muted"
-              (click)="vm.uploads.clearSessions()"
-              [disabled]="vm.busy()"
-            >
-              Elimină referințele locale ale contului
-            </button>
-          </section>
-          @if (vm.canIncidents()) {
-            <aside class="panel">
+          @if (vm.canIncidents() && vm.uploads.category === "INCIDENT" && !vm.uploads.incidentId) {
+            <section class="incident-fields">
               <span class="eyebrow">FLUX AVARII</span>
-              <h2>Creează un incident</h2>
+              <h2>Descrie avaria</h2>
               <p>Metadatele devin vizibile înainte de analiza atașamentului.</p>
               <div class="form-row">
                 <label>Stație<input id="station-id" required [(ngModel)]="vm.uploads.stationId" /></label
@@ -210,6 +147,71 @@
               >
                 + Creează incident
               </button>
-            </aside>
+            </section>
           }
+            <label class="dropzone"
+              ><span class="upload-symbol">↑</span
+              ><strong>{{
+                vm.uploads.file?.name || "Alege fișierul pentru transfer"
+              }}</strong
+              ><small>{{
+                vm.uploads.file
+                  ? vm.bytes(vm.uploads.file.size)
+                  : "Click pentru selectare · transfer exclusiv
+            prin FileGrid"
+              }}</small
+              ><input
+                type="file"
+                aria-label="Fișier pentru transfer"
+                (change)="vm.uploads.selectFile($event)"
+                [disabled]="vm.busy()"
+            /></label>
+            @if (vm.uploads.uploadLabel()) {
+              <div class="progress-label" aria-live="polite">
+                <span>{{ vm.uploads.uploadLabel() }}</span
+                ><strong>{{ vm.uploads.progress() }}%</strong>
+              </div>
+              <progress aria-label="Progres încărcare" [attr.aria-valuetext]="vm.uploads.uploadLabel()" [value]="vm.uploads.progress()" max="100"></progress>
+            }
+            @if (vm.uploads.checksum()) {
+              <div class="hash">
+                <span>SHA-256 ORIGINAL</span><code>{{ vm.uploads.checksum() }}</code>
+              </div>
+            }
+            <div class="actions">
+              <button
+                class="primary"
+                (click)="submit()"
+                [disabled]="
+                  vm.busy() || !!vm.uploads.recovery() || (!vm.uploads.file && (vm.uploads.category !== 'INCIDENT' || !!vm.uploads.incidentId))
+                "
+              >
+                {{
+                  vm.busy() ? "Transfer în curs…" : vm.uploads.category === "INCIDENT" && !vm.uploads.incidentId ? "Raportează avaria" : "Încarcă / reia transferul →"
+                }}
+              </button>
+              @if (vm.busy() && !vm.uploads.cancelling()) {
+                <button class="secondary" (click)="vm.uploads.pause()">{{ vm.uploads.uploadPhase() === 'verifying' ? 'Oprește urmărirea' : 'Pauză' }}</button>
+              }
+              @if (vm.uploads.activeSession(); as session) {
+                @if (!['AVAILABLE', 'VERIFYING', 'CANCELLED'].includes(session.status) && !vm.uploads.recovery()) {
+                  <button class="secondary" (click)="vm.uploads.cancelUpload()" [disabled]="vm.uploads.cancelling()">
+                    {{ vm.uploads.cancelling() ? 'Se anulează…' : 'Anulează transferul' }}
+                  </button>
+                }
+              }
+              @if (vm.uploads.recovery(); as state) {
+                <p>{{ state.reason }}</p>
+                <button class="secondary" (click)="vm.uploads.restartUpload()" [disabled]="vm.busy()">Începe o sesiune nouă</button>
+              }
+            </div>
+            <button
+              class="text-button muted"
+              (click)="vm.uploads.clearSessions()"
+              [disabled]="vm.busy()"
+            >
+              Elimină referințele locale ale contului
+            </button>
+          </section>
+
         </div>

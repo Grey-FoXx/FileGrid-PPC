@@ -225,8 +225,8 @@ test("incident cards preserve AVAILABLE files for pending and failed ML and show
   await signIn(page);
   await page.locator("nav button").filter({ hasText: "Dispecerat" }).click();
   await expect(page.getByRole("heading", { name: "FileGrid Dispecerat" })).toHaveCount(0);
-  await expect(page.locator(".incident-card").nth(0).getByText("PENDING", { exact: true })).toBeVisible();
-  await expect(page.locator(".incident-card").nth(1).getByText("FAILED", { exact: true })).toBeVisible();
+  await expect(page.locator(".incident-card").filter({has: page.getByRole("heading", {name:"ST-1",exact:false})}).getByText("PENDING", { exact: true })).toBeVisible();
+  await expect(page.locator(".incident-card").filter({has: page.getByRole("heading", {name:"ST-2",exact:false})}).getByText("FAILED", { exact: true })).toBeVisible();
   await expect(page.getByText("Fișierele disponibile", { exact: false })).toBeVisible();
   await expect(page.getByText("available-1.txt")).toBeVisible();
   await expect(page.getByText("available-2.txt")).toBeVisible();

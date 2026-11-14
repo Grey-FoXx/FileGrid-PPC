@@ -30,7 +30,7 @@ test("populated pages keep long names, policy data and model results within the 
   await expect(page.getByRole("button", { name: "Deconectare", exact: true })).toBeVisible();
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const title of ["Privire de ansamblu", "Încarcă fișiere", "Fișiere", "Dispecerat", "Citiri contoare", "Politici de stocare"]) {
+    for (const title of ["Acasă", "Încarcă fișiere", "Fișiere", "Dispecerat", "Citiri contoare", "Politici de stocare"]) {
       if (title === "Fișiere") await page.getByRole("button", { name: "▤ Fișiere", exact: true }).click();
       else await page.locator("nav button").filter({ hasText: title }).click();
       await expect(page.getByRole("button", { name: "Reîmprospătează", exact: true })).toBeEnabled();

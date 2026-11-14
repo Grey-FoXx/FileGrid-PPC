@@ -1,7 +1,7 @@
 @if (!vm.me()) {
   <main class="login-screen">
     <section class="login-brand">
-      <div class="brand-mark">ϟ</div>
+      <img class="ppc-login" src="/ppc-logo.png" alt="PPC" />
       <span class="eyebrow">FILEGRID / PPC</span>
       <h1 tabindex="-1">Datele rețelei.<br />Într-un singur loc.</h1>
       <p>
@@ -53,8 +53,7 @@
         (click)="
           $event.preventDefault(); vm.go(vm.canStats() ? 'dashboard' : 'files')
         "
-        ><span class="brand-mark small">ϟ</span
-        ><span>FileGrid<small>POWERED BY PPC</small></span></a
+        ><img class="ppc-logo" src="/ppc-logo.png" alt="PPC" /><span>FileGrid<small>POWERED BY PPC</small></span></a
       >
       <div class="workspace-label">SPAȚIU DE LUCRU</div>
       <nav aria-label="Navigare principală">

@@ -1,3 +1,4 @@
+import { signal } from "@angular/core";
 export interface FileRecord {
   id: string;
   category: string;
@@ -36,6 +37,10 @@ export interface Analysis {
 }
 export interface Incident {
   id: string;
+  latitude?: number;
+  longitude?: number;
+  occurredAt?: string;
+  createdAt?: string;
   stationId: string;
   zone: string;
   eventType: string;
@@ -65,7 +70,10 @@ export interface ApiError extends Error {
   code?: string;
   correlationId?: string;
 }
+export interface RequestTrace { correlationId: string; path: string; at: string; status: number; durationMs: number; fileId?: string; }
 export class Api {
+  readonly traces = signal<RequestTrace[]>([]);
+  private sessionFiles = new Map<string,string>();
   private auth = "";
   private credentials = new AbortController();
   constructor(private onUnauthorized: () => void = () => {}) {}
@@ -77,6 +85,8 @@ export class Api {
     this.credentials.abort();
     this.credentials = new AbortController();
     this.auth = "";
+    this.traces.set([]);
+    this.sessionFiles.clear();
   }
   private async check(response: Response, credentials: AbortController) {
     credentials.signal.throwIfAborted();
@@ -98,7 +108,10 @@ export class Api {
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("Authorization", this.auth);
-    headers.set("X-Correlation-ID", crypto.randomUUID());
+    const correlationId = crypto.randomUUID();
+    headers.set("X-Correlation-ID", correlationId);
+    const started = performance.now();
+    const at = new Date().toISOString();
     if (typeof init.body === "string")
       headers.set("Content-Type", "application/json");
     const credentials = this.credentials;
@@ -110,10 +123,17 @@ export class Api {
         : credentials.signal,
     });
     await this.check(response, credentials);
-    if (response.status === 204) return undefined as T;
-    const value = (await response.json()) as T;
+    const value = (response.status === 204 ? undefined : await response.json()) as T;
     credentials.signal.throwIfAborted();
     init.signal?.throwIfAborted();
+    if (path.startsWith('/upload-sessions')) {
+      const session = (value || {}) as Partial<Session>;
+      if(session.sessionId && session.fileId) this.sessionFiles.set(session.sessionId,session.fileId);
+      const sessionId = path.split('/')[2];
+      const fileId = session.fileId || this.sessionFiles.get(sessionId);
+      if ((init.method || 'GET') !== 'GET') this.traces.update(rows=>[...rows.slice(-31), {correlationId:response.headers.get('X-Correlation-ID') || correlationId,
+        path, at, status:response.status, durationMs:performance.now()-started, fileId}]);
+    }
     return value;
   }
   async downloadResponse(id: string, signal?: AbortSignal) {

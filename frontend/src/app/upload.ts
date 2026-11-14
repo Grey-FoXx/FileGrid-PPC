@@ -96,6 +96,7 @@ export class UploadController {
     this.latitude = 44.18;
     this.longitude = 28.65;
     this.safetyCritical = false;
+    this.incidentRequest = null;
   }
 
   selectFile(event: Event) {
@@ -109,6 +110,7 @@ export class UploadController {
     this.recovery.set(null);
     this.uploadPhase.set("idle");
   }
+  private incidentRequest: { body: string; key: string } | null = null;
   async createIncident() {
     if (this.host.busy()) return;
     const invalid = !this.stationId.trim() ? "station-id" : !this.zone.trim() ? "incident-zone" :
@@ -121,26 +123,22 @@ export class UploadController {
       this.host.focus("#" + invalid);
       return;
     }
+    const body = JSON.stringify({stationId:this.stationId, zone:this.zone, eventType:this.eventType,
+      severity:this.severity, affectedCustomers:this.affectedCustomers, latitude:this.latitude,
+      longitude:this.longitude, safetyCritical:this.safetyCritical});
+    if(this.incidentRequest?.body !== body) this.incidentRequest = {body, key:crypto.randomUUID()};
     const generation = this.host.generation();
     this.host.error.set("");
     this.host.busy.set(true);
     try {
       const result = await this.host.api.request<Incident>("/incidents", {
         method: "POST",
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({
-          stationId: this.stationId,
-          zone: this.zone,
-          eventType: this.eventType,
-          severity: this.severity,
-          affectedCustomers: this.affectedCustomers,
-          latitude: this.latitude,
-          longitude: this.longitude,
-          safetyCritical: this.safetyCritical,
-        }),
+        headers: { "Idempotency-Key": this.incidentRequest.key },
+        body,
       });
       if (generation !== this.host.generation()) return;
       this.incidentId = result.id;
+      this.incidentRequest = null;
       this.host.notice.set(
         "Incident creat. Metadatele sunt disponibile; poți adăuga atașamentul.",
       );

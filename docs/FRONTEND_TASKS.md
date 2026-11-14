@@ -27,3 +27,20 @@ P1 completed after explicit continuation approval. Added download progress/cance
 Final authorized delivery (2026-11-14): P0/P1/P2 frontend implementation complete against the existing API. Production build passes; all **61 browser tests pass with zero skipped/flaky/failed**, comprising 57 fixture/layout regressions and 4 actual Compose browser workflows. FE06/FE09/FE10 are covered by the complete production-served suite; FE07 includes actual 8 MiB + 19 byte multipart pause/reload/recovery. Services remain running at https://localhost:8443 for user testing. No backend, contract, infrastructure or develop changes were made.
 
 Remaining backend dependencies: historical normal/day-versus-storm queries, global incident-group identifiers and business-alert delivery. FE11 uses explicitly labelled observed-session snapshots and analysis-local cluster labels. Existing startup script readiness resolves localhost to IPv6 inside gateway while Nginx serves IPv4; its timeout is documented in frontend/README.md, without claiming the script passed.
+
+## PPC six-section revision (feature/demo-command-center)
+
+User-authorized replacement of the Command Center navigation. The six-section baseline was restored through explicit revert commits before this implementation.
+
+| Task | Delivered frontend behavior | Boundary |
+|---|---|---|
+| PPC shell | Acasă + original five sections, supplied PPC logo, blue/black/white, rounded and larger UI | Existing roles/functions retained |
+| Policy form | Category → native blurred modal; security guards; versioned JSON/YAML-compatible config download; original config reset/download | ADMIN generation; manual config replacement + API restart; no save endpoint |
+| Dispatcher map | Whole-country Romania outline; approximate three-region highlights; live API markers, severity colors, proximity clusters and keyboard details | Current filtered page; no inferred common-cause/global ML membership |
+| Incident ingestion | One panel: metadata-only or optional attachment; confirmed incident reused on upload retry | Existing API/idempotency and robust transfer lifecycle |
+| File observability | Real quantiles/throughput/errors; explicit missing measurements; category/file-selected animated milestones; captured request correlation IDs | No invented internal timings or comparable benchmarks |
+| Acasă scenarios | Local Normal/Storm visual explanation; automatic browser warnings from actual error data | Real load, external team alert delivery and full business guarantees need separate validation |
+
+Mandatory outstanding requirement: clean-machine startup through one command remains **UNVALIDATED**. Local production gateway rebuild does not satisfy it. Backend, infrastructure, contracts and runtime policy configuration were not edited.
+
+Revision validation complete: Angular production build PASS; final production-served browser suite **64 passed / 0 failed / 0 skipped**, including all 61 retained baseline cases and three PPC-specific tests. Existing gateway updated for user testing at https://localhost:8443. No merge or push performed.

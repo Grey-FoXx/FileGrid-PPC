@@ -11,6 +11,7 @@
             + Raportează avarie
           </button>
         </section>
+        <filegrid-incident-map [rows]="vm.visibleIncidents()" />
         <filegrid-section-state [state]="vm.states()['incidents']" label="incidentele" (retry)="vm.refresh()" />
         @if (vm.canStats()) {
           <filegrid-section-state [state]="vm.states()['business']" label="modul operațional" (retry)="vm.refresh()" />
@@ -19,6 +20,7 @@
             <span>{{ vm.business()?.recentIncidents ?? '—' }} incidente în ultimele 5 minute. {{ vm.business()?.mode === 'STORM' ? 'Accent pe priorități și zone afectate.' : 'Accent pe incidente individuale.' }}</span>
           </div>
         }
+        <h2>Decizii pentru dispecer · ordonate după prioritate</h2>
         <div class="incident-filters filters">
           <input aria-label="Caută incidente în pagina curentă" placeholder="Stație, zonă, eveniment…" [(ngModel)]="vm.incidentSearch" />
           <select aria-label="Filtru analiză ML" [(ngModel)]="vm.incidentML"><option value="">Toate stările ML</option>@for (status of ['NOT_REQUESTED','PENDING','RUNNING','COMPLETED','FAILED']; track status) { <option [value]="status">{{ status }}</option> }</select>

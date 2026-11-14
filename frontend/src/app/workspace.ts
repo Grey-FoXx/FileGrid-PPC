@@ -62,7 +62,7 @@ export class WorkspaceStore implements OnDestroy {
   meterFilter = "";
   incidentSearch = "";
   incidentML = "";
-  incidentSort = "auto";
+  incidentSort = "priority";
   filePage = signal(0);
   fileTotal = signal(0);
   selectedFile = signal<FileRecord | null>(null);
@@ -71,7 +71,7 @@ export class WorkspaceStore implements OnDestroy {
     if (this.me() && !this.loading()) void this.refresh(true);
   }, 5000);
   tabs = [
-    ["dashboard", "▦", "Privire de ansamblu"],
+    ["dashboard", "▦", "Acasă"],
     ["upload", "↑", "Încarcă fișiere"],
     ["files", "▤", "Fișiere"],
     ["incidents", "ϟ", "Dispecerat"],
@@ -149,7 +149,7 @@ export class WorkspaceStore implements OnDestroy {
     this.meterFilter = "";
     this.incidentSearch = "";
     this.incidentML = "";
-    this.incidentSort = "auto";
+    this.incidentSort = "priority";
     this.busy.set(false);
     this.loading.set(false);
     this.online.set(true);
@@ -189,7 +189,7 @@ export class WorkspaceStore implements OnDestroy {
     let networkFailure = false;
     const load = async <T>(section: string, path: string, apply: (value: T) => void) => {
       this.states.update(states => ({ ...states, [section]: {
-        loading: true, error: "", updatedAt: states[section]?.updatedAt || null,
+        loading: !_silent || !states[section]?.updatedAt, error: "", updatedAt: states[section]?.updatedAt || null,
       } }));
       try {
         const value = await this.api.request<T>(path, { signal: controller.signal });
@@ -211,19 +211,19 @@ export class WorkspaceStore implements OnDestroy {
     });
     const requests: Promise<void>[] = [
       load<Page<FileRecord>>("files", "/files?" + q, f => {
-        this.files.set(f.items);
+        if (JSON.stringify(this.files()) !== JSON.stringify(f.items)) this.files.set(f.items);
         this.fileTotal.set(f.total);
       }),
     ];
     if (this.canStats()) {
       requests.push(
         load<Business>("business", "/stats/business", b => this.business.set(b)),
-        load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { this.incidents.set(i.items); this.incidentTotal.set(i.total); }),
+        load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { if (JSON.stringify(this.incidents()) !== JSON.stringify(i.items)) this.incidents.set(i.items); this.incidentTotal.set(i.total); }),
         load<Page<Reading>>("meters", "/meter-readings?page=" + this.meterPage() + "&size=25" + (this.meterFilter ? "&meterId=" + encodeURIComponent(this.meterFilter.trim()) : ""), m => { this.readings.set(m.items); this.meterTotal.set(m.total); }),
         load<{ series: Series[]; windowMinutes?: number }>("technical", "/stats/technical", t => { this.series.set(t.series); this.windowMinutes.set(t.windowMinutes ?? null); }),
       );
     } else if (this.me()?.role === "FIELD_OPERATOR") {
-      requests.push(load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { this.incidents.set(i.items); this.incidentTotal.set(i.total); }));
+      requests.push(load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { if (JSON.stringify(this.incidents()) !== JSON.stringify(i.items)) this.incidents.set(i.items); this.incidentTotal.set(i.total); }));
     }
     if (this.tab() === "policies")
       requests.push(load<unknown>("policies", "/policies", p => this.policies.set(p)));
