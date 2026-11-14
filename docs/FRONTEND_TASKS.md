@@ -57,3 +57,11 @@ Revision validation complete: Angular production build PASS; final production-se
 - FE-DEMO-AUTH: capability/scope handshake completes before workspace navigation; supported human roles use the small demo view by default, with write controls restricted to ADMIN and intervention controls to ADMIN/DISPATCHER.
 
 Validation: **67 browser tests, 6 Java tests and 4 ML tests passed**, production build and Compose configuration passed. Real storage/reset checks preserved all captured ordinary IDs. The local stack is left in the initial Normal scenario; the old ordinary meter generator is stopped, with its journal/data retained. Backend/API/ML changes are a necessary coordinated extension of the user's new request and are committed separately from frontend integration. Clean-machine single-command startup and external alert delivery remain UNVALIDATED.
+
+## November15 checkpoint: live-policy completion, dense-map correction and PDF audit
+
+- Preserve the user's newer `1680be9` snapshot; no project reset/recreation.
+- Policy save/reset is live and persistent; existing routing snapshots remain immutable. Fixed async error/loading presentation and null-criterion rejection.
+- Dense map uses bounded in-country marker placement and clearly identified visual aggregation; all real intervention IDs/counts/actions remain separate. Added 77-report coastline regression, selection and reduced-motion checks.
+- Current production full browser run: **74 passed**, Java **7 passed**, simulator **2 passed**. Current real four-category/three-storage smoke and 1.2GB bounded-memory transport checks pass.
+- Complete per-requirement audit is `frontend/AUDIT_PDF.md`. Future UI test controls are suggestions only. One-command clean startup remains an eliminatory blocker, not silently marked complete; several nonfunctional guarantees still require external campaigns.

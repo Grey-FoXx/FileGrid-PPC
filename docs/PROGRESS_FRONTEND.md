@@ -150,3 +150,32 @@ Final checks:
 - Final local handoff is Normal: **13 AVAILABLE files, 6 COMPLETED analyses, 4 readings, 3 NEW groups**, with generated timing units checked. No merge/push, no secrets or runtime artifacts committed. `git diff --check`: PASS.
 
 Remaining explicit limitations: demonstration video-category fixtures are synthetic binary payloads, not playable codecs or >1 GB benchmarks; server grouping is statistical and requires human interpretation; external team alert delivery and clean-machine one-command startup remain unvalidated. This delivery does not mark those PDF requirements complete.
+
+## Live policies and bounded dense map — 2026-11-15
+
+Resumed from the user's newer committed snapshot `1680be9` on `feature/demo-command-center`, which already contained V3 persistent policies and the initial map-offset implementation. Preserved those changes and the running data. The two delegated agents became unavailable; all final inspection, fixes and validation were completed by the principal.
+
+- Live policy UI was already wired to PostgreSQL-backed PUT/reset. Fixed zoneless asynchronous form state: saving/error/applied now use Angular signals, so a 409/422 immediately releases the spinner and displays the error without waiting for a global refresh. Client rule-ID limits now match the backend. Added a server guard/test for explicit null criteria (422 instead of NPE/500). No active rule values were hardcoded or security constraints relaxed.
+- Removed unbounded radial marker search. Layout keeps local offsets <=90 SVG units and reserves country-contour space for markers; saturated areas aggregate only VISUALLY, with total reports/group count and an intervention selector. Persistent IDs/status actions stay separate. Marker bodies/arrival animations are clipped to Romania; exact GPS data remain unchanged. Added local density caching to avoid repeating exhausted slot searches for many reports at the same position. Edge reports without a safe local placement remain listed and are identified instead of being sent outside the country.
+- Updated tests that had never been run in the user's checkpoint: exact close-button selector, stable equal-coordinate centroid arithmetic, correct arrival attribute, and reduced-motion no-animation behavior. Retained their assertions. Added an independent SVG-contour test for 77 coincident coastal interventions, all totals retained.
+- Added `frontend/AUDIT_PDF.md`: every minimum functional, table-2.1 business, nonfunctional and statistics requirement; current evidence vs UI demonstration vs future testability controls vs external checks. No future fault/load/alerting/benchmark UI was implemented.
+
+Validation:
+- Production Angular build PASS, Docker API/gateway images rebuilt and running, Compose config PASS.
+- `backend/./mvnw -q test`: **7 passed** (4 integration, 3 integrity/policy), zero failures/errors.
+- Complete HTTPS production browser suite with live flags: **74 passed / 0 failed / 0 skipped**; the final density-cache change is followed by the focused policy/map cases and actual-current-data browser geometry check.
+- Simulator unit suite: **2 passed**; real ordinary-data reading count grew by 3 over an observed 3 seconds. The user's simulator remains running; it was not stopped for this checkpoint.
+- Existing real smoke script PASS: all four categories, separate Database/S3/FTP recovery, exact bytes/hash, duplicate/conflict meter replay, denied second-owner document access and ML-independent availability.
+- Actual UI policy flow PASS: eligible new route changed FTP→S3 without download/restart, preexisting session retained FTP/version, both payloads recovered correctly. Policy survived API restart; user's original rules restored via API at a new monotonic version. No data/demo reset.
+- Existing >1GB transport harness PASS on the current Compose API: **1,288,699,904 bytes**, 154 parts plus replay, exact recovered SHA-256, **459,415,552-byte (~438 MiB) peak sampled API RSS**, cgroup limit1GiB; observed duration91.86s. This is not a codec, 10x isolation or scale benchmark.
+- Reconfirmed eliminatory limitation: the readiness URL used by `scripts/start.sh` fails inside gateway at localhost/IPv6 while 127.0.0.1 succeeds. Did not edit startup/infrastructure solely to improve the PDF audit. Clean-machine one-command startup remains unvalidated, as do 10x isolation, multi-instance scale, external business-alert delivery, full outage/packet-loss campaigns and history-wide secret scanning.
+
+Intermediate targeted fixture failures were inspected and corrected (unexecuted stale selectors/attribute assumptions and the real asynchronous error-rendering issue); final green checks are reported separately. Runtime logs/captures/test files remain ignored. No passwords or encryption keys were printed/committed.
+
+Final dense-map runtime check after the density cache: **81 open reports / 73 real interventions → 5 visual markers**, all bodies inside Romania, observed maximum display offset 60 SVG units. The7 dedicated production-served policy/map cases pass after this last layout change. The first real all-data capture exceeded its5s harness wait while many legacy groups were loaded; slot-search caching was added for saturated local buckets, and the bounded 20s final real-data check succeeds. No intervention IDs, statuses, GPS values, files or demo data were reset. Full PDF evidence and explicit readiness blocker are documented in `frontend/AUDIT_PDF.md`; frontend README now links it and describes current live policy/dense-map behavior.
+
+
+### Remote synchronization — 2026-11-15
+Preserved remote commits `be29d69` / `62bf144`, including startup fixes and isolated Compose evidence. This supersedes the earlier readiness blocker above; see `docs/PDF_REQUIREMENTS_REVIEW.md`. Kept signal-based live-policy feedback, bounded visual density aggregation and all remote browser cases; the dense-zone case now verifies retention of all 77 intervention IDs through visual aggregates rather than requiring overlapping individual markers. No merge into develop or force push.
+
+Synchronization checks: production Angular build PASS; all 8 policy/map browser cases PASS (27.3s), including both retained density regressions; whitespace checks PASS.

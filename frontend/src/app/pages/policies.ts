@@ -1,4 +1,4 @@
-import { ChangeDetectorRef, Component, ElementRef, ViewChild, inject } from "@angular/core";
+import { Component, ElementRef, ViewChild, inject, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { WorkspaceStore } from "../workspace";
@@ -37,7 +37,6 @@ interface PolicyConfiguration { version: number | string; rules: PolicyRule[]; [
 export class PoliciesPage {
   @ViewChild("policyDialog") private policyDialog?: ElementRef<HTMLDialogElement>;
   readonly vm = inject(WorkspaceStore);
-  private readonly changes = inject(ChangeDetectorRef);
   readonly categories = [
     { key: "METER_READING", label: "Citiri contoare", note: "Ingestie automată, identitate unică și confirmare după commit." },
     { key: "INCIDENT", label: "Avarii", note: "S3 pentru atașamente obișnuite; FTP este permis doar pentru loguri legacy nesensibile." },
@@ -50,15 +49,15 @@ export class PoliciesPage {
     { key: "FTP", label: "FTP service" },
   ];
   modalOpen = false;
-  saving = false;
+  saving = signal(false);
   selectedRuleId = '';
   draftId = '';
   draftCategory = 'INCIDENT';
   draftStorage = 'S3';
   draftAttachmentType = '';
   draftSensitivity = '';
-  error = '';
-  applied = '';
+  error = signal('');
+  applied = signal('');
   private baseConfig: PolicyConfiguration | null = null;
 
   get activeConfig(): PolicyConfiguration | null {
@@ -76,7 +75,7 @@ export class PoliciesPage {
   newPolicy(category:string){
     if(!this.isAdmin || !this.activeConfig) return;
     this.baseConfig=structuredClone(this.activeConfig);
-    this.draftCategory=category;this.onCategoryChanged();this.error='';this.applied='';this.modalOpen=true;
+    this.draftCategory=category;this.onCategoryChanged();this.error.set('');this.applied.set('');this.modalOpen=true;
     setTimeout(()=>{const dialog=this.policyDialog?.nativeElement;if(dialog&&!dialog.open)dialog.showModal();});
   }
   onCategoryChanged(){
@@ -87,16 +86,16 @@ export class PoliciesPage {
     const rule=this.editableRules().find(r=>r.id===this.selectedRuleId);
     this.draftId=rule?.id || '';this.draftStorage=rule?.storage || '';
     this.draftAttachmentType=rule?.attachmentType || '';this.draftSensitivity=rule?.sensitivity || '';
-    this.error='';this.applied='';
+    this.error.set('');this.applied.set('');
   }
   closeModal(){
-    if(this.saving)return;
-    this.modalOpen=false;this.error='';
+    if(this.saving())return;
+    this.modalOpen=false;this.error.set('');
     if(this.policyDialog?.nativeElement.open)this.policyDialog.nativeElement.close();
   }
   private validate(){
     if(!this.baseConfig || !this.selectedRuleId)return 'Încarcă mai întâi politica activă.';
-    if(!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(this.draftId.trim()))return 'ID-ul regulii trebuie să aibă 1–80 caractere: litere, cifre, punct, _ sau -.';
+    if(!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(this.draftId.trim()))return 'ID-ul regulii trebuie să aibă 1–120 caractere: litere, cifre, punct, _ sau -.';
     if(this.baseConfig.rules.some(r=>r.id!==this.selectedRuleId && r.id===this.draftId.trim()))return 'ID-ul este folosit de altă regulă.';
     if(this.draftCategory==='METER_READING' && this.draftStorage!=='DATABASE')return 'Citirile de contor trebuie rutate către DATABASE.';
     if(['CONNECTION_DOCUMENT','DRONE_VIDEO'].includes(this.draftCategory) && this.draftStorage!=='S3')return 'Documentele de racordare și videoclipurile dronă trebuie rutate către S3.';
@@ -105,8 +104,8 @@ export class PoliciesPage {
     return '';
   }
   async confirmPolicy(){
-    if(this.saving || !this.isAdmin)return;
-    this.error=this.validate();if(this.error)return;
+    if(this.saving() || !this.isAdmin)return;
+    this.error.set(this.validate());if(this.error())return;
     const rule:PolicyRule={id:this.draftId.trim(),category:this.draftCategory,storage:this.draftStorage};
     if(this.draftCategory==='INCIDENT'){
       if(this.draftAttachmentType)rule.attachmentType=this.draftAttachmentType;
@@ -116,26 +115,23 @@ export class PoliciesPage {
     await this.apply('/policies',{expectedVersion:this.baseConfig!.version,rules},rule.id);
   }
   async restoreOriginalConfig(){
-    if(this.saving || !this.isAdmin || !this.baseConfig)return;
+    if(this.saving() || !this.isAdmin || !this.baseConfig)return;
     await this.apply('/policies/reset',{expectedVersion:this.baseConfig.version},'');
   }
   private async apply(path:string,body:object,ruleId:string){
-    const generation=this.vm.generation();this.saving=true;this.error='';this.applied='';
+    const generation=this.vm.generation();this.saving.set(true);this.error.set('');this.applied.set('');
     try{
       const config=await this.vm.api.request<PolicyConfiguration>(path,{method:path.endsWith('/reset')?'POST':'PUT',body:JSON.stringify(body)});
       if(generation!==this.vm.generation())return;
       this.vm.policies.set(config);this.baseConfig=structuredClone(config);
       this.selectedRuleId=ruleId || this.editableRules()[0]?.id || '';
       this.selectRule();
-      this.applied='Politica v'+config.version+' este activă. Se aplică sesiunilor noi; fișierele și transferurile deja create își păstrează destinația și versiunea.';
-    }catch(e){if(generation===this.vm.generation())this.error=this.vm.problemMessage(e);}
-    finally{
-      if(generation===this.vm.generation())this.saving=false;
-      this.changes.markForCheck();
-    }
+      this.applied.set('Politica v'+config.version+' este activă. Se aplică sesiunilor noi; fișierele și transferurile deja create își păstrează destinația și versiunea.');
+    }catch(e){if(generation===this.vm.generation())this.error.set(this.vm.problemMessage(e));}
+    finally{if(generation===this.vm.generation())this.saving.set(false);}
   }
   async reloadDraft(){
-    if(this.saving)return;
+    if(this.saving())return;
     await this.vm.refresh();
     if(this.activeConfig){this.baseConfig=structuredClone(this.activeConfig);this.onCategoryChanged();}
   }

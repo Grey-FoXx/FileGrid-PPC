@@ -162,10 +162,10 @@ public class PolicyEngine {
       ApiProblem.require(!hasSensitivity || "INCIDENT".equals(category), status, "INVALID_POLICY",
           "Sensitivity criteria apply only to INCIDENT rules");
       if (hasAttachment)
-        ApiProblem.require(Set.of("BINARY", "LEGACY_LOG").contains(rule.get("attachmentType")), status,
+        ApiProblem.require(rule.get("attachmentType") instanceof String && Set.of("BINARY", "LEGACY_LOG").contains(rule.get("attachmentType")), status,
             "INVALID_POLICY", "Unsupported attachmentType criterion");
       if (hasSensitivity)
-        ApiProblem.require(Set.of("SENSITIVE", "NON_SENSITIVE").contains(rule.get("sensitivity")), status,
+        ApiProblem.require(rule.get("sensitivity") instanceof String && Set.of("SENSITIVE", "NON_SENSITIVE").contains(rule.get("sensitivity")), status,
             "INVALID_POLICY", "Unsupported sensitivity criterion");
       boolean allowed = switch (category) {
         case "METER_READING" -> "DATABASE".equals(storage) && !hasAttachment && !hasSensitivity;

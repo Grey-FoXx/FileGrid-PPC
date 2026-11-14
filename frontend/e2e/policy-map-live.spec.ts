@@ -197,7 +197,9 @@ test("dense incident zones keep every visual marker inside Romania and near its 
   await page.locator("nav button").filter({ hasText: "Dispecerat" }).click();
 
   const markers = page.locator(".map-marker");
-  await expect(markers).toHaveCount(77);
+  await expect.poll(() => markers.count()).toBeGreaterThan(0);
+  expect(await markers.count()).toBeLessThanOrEqual(8);
+  expect(await markers.evaluateAll(elements => elements.reduce((sum, element) => sum + Number(element.getAttribute('data-group-count')), 0))).toBe(77);
   const layout = await markers.evaluateAll(elements => {
     const outline = document.querySelector("#romania-clip path") as SVGGeometryElement;
     return elements.map(element => {
@@ -279,5 +281,47 @@ test("incoming report animation respects reduced-motion preference", async ({ pa
   await page.getByRole("button", { name: "+ Creează incident" }).click();
   await expect(page.getByRole("status")).toContainText("Incident creat");
   await page.locator("nav button").filter({ hasText: "Dispecerat" }).click();
-  await expect(page.locator('.report-arrival[data-report-id="reduced-member"]')).toHaveCount(0);
+  const arrival = page.locator('.report-arrival[data-report-id="reduced-member"]');
+  await expect(arrival).toHaveCount(0);
+  await expect(page.locator('.map-marker[data-group-id="group-reduced"]')).toHaveAttribute('aria-label', /2 rapoarte/);
+
+});
+
+test("dense coastal reports stay inside Romania and retain every intervention without long-distance scattering", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const dense = Array.from({length:77},(_,i)=>{
+    const item=group('dense-'+i,1,{latitude:44.1802+(i%3)*.0001,longitude:28.6502+(i%4)*.0001});
+    return {...item,zone:'Dobrogea',incidents:item.incidents.map(row=>({...row,zone:'Dobrogea'}))};
+  });
+  installBaseApi(page,{groups:()=>dense});
+  await login(page);
+  await page.locator('nav button').filter({hasText:'Dispecerat'}).click();
+  const map=page.getByRole('region',{name:'Harta avariilor din România'});
+  await expect(map).toContainText('77 rapoarte deschise');
+  const markers=map.locator('.map-marker');
+  await expect.poll(()=>markers.count()).toBeGreaterThan(0);
+  const geometry=await map.locator('svg').evaluate(svgElement=>{
+    const svg=svgElement as SVGSVGElement;
+    const country=svg.querySelector(':scope > path') as SVGPathElement;
+    return Array.from(svg.querySelectorAll('.map-marker')).map(node=>{
+      const point=(node.getAttribute('transform')||'').match(/translate\(([-\d.]+) ([-\d.]+)\)/)!;
+      const x=Number(point[1]),y=Number(point[2]);
+      const r=Number(node.querySelector('.cluster-core circle')!.getAttribute('r'))+1;
+      const inside=Array.from({length:24},(_,i)=>{
+        const p=svg.createSVGPoint();p.x=x+Math.cos(i*Math.PI/12)*r;p.y=y+Math.sin(i*Math.PI/12)*r;
+        return country.isPointInFill(p);
+      }).every(Boolean);
+      return {inside,reports:Number(node.getAttribute('aria-label')!.match(/^(\d+)/)![1]),groups:Number(node.getAttribute('data-group-count')),
+        offset:Math.hypot(x-Number(node.getAttribute('data-source-x')),y-Number(node.getAttribute('data-source-y')))};
+    });
+  });
+  expect(geometry.length).toBeLessThanOrEqual(8);
+  expect(geometry.every(marker=>marker.inside&&marker.offset<=90.01)).toBe(true);
+  expect(geometry.reduce((sum,marker)=>sum+marker.reports,0)).toBe(77);
+  expect(geometry.reduce((sum,marker)=>sum+marker.groups,0)).toBe(77);
+  await markers.first().click();
+  await expect(map.getByText('Zonă aglomerată',{exact:true})).toBeVisible();
+  await expect(map.getByRole('combobox',{name:'Intervenție din zonă'})).toBeVisible();
+  expect(await map.getByRole('combobox',{name:'Intervenție din zonă'}).locator('option').count()).toBeGreaterThan(1);
+  await expect(map.locator('.report-arrival')).toHaveCount(0);
 });

@@ -429,6 +429,13 @@ class ApiIntegrationTest {
     mvc.perform(as(put("/api/v1/policies"), "admin").contentType("application/json")
             .content(json.writeValueAsBytes(Map.of("expectedVersion", version + 1, "rules", invalid))))
         .andExpect(status().isUnprocessableEntity());
+    var nullCriterion = new ArrayList<Map<String, Object>>();
+    for (var rule : rules) nullCriterion.add(new LinkedHashMap<>(rule));
+    nullCriterion.stream().filter(rule -> "INCIDENT".equals(rule.get("category"))).findFirst().orElseThrow()
+        .put("sensitivity", null);
+    mvc.perform(as(put("/api/v1/policies"), "admin").contentType("application/json")
+            .content(json.writeValueAsBytes(Map.of("expectedVersion", version + 1, "rules", nullCriterion))))
+        .andExpect(status().isUnprocessableEntity());
     var missingFallback = rules.stream()
         .filter(rule -> !"METER_READING".equals(rule.get("category")))
         .map(LinkedHashMap<String, Object>::new).toList();
