@@ -2,8 +2,16 @@ package ro.filegrid;
 
 import java.io.*;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
+import java.security.cert.CertificateFactory;
 import java.time.Duration;
 import java.util.*;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 import org.apache.commons.net.ftp.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,6 +29,8 @@ public class Storage {
   private final JdbcTemplate db;
   private final S3Client s3;
   private final String bucket, host, user, password;
+  private final boolean ftpTlsEnabled;
+  private final SSLContext ftpSslContext;
   private final int port;
 
   public Storage(
@@ -32,13 +42,18 @@ public class Storage {
       @Value("${filegrid.ftp-host}") String host,
       @Value("${filegrid.ftp-port}") int port,
       @Value("${filegrid.ftp-user}") String user,
-      @Value("${filegrid.ftp-password}") String password) {
+      @Value("${filegrid.ftp-password}") String password,
+      @Value("${filegrid.ftp-tls-enabled:true}") boolean ftpTlsEnabled,
+      @Value("${filegrid.ftp-tls-ca-file:/run/filegrid/ftp-tls.crt}") String ftpTlsCaFile)
+      throws GeneralSecurityException, IOException {
     this.db = db;
     this.bucket = bucket;
     this.host = host;
     this.port = port;
     this.user = user;
     this.password = password;
+    this.ftpTlsEnabled = ftpTlsEnabled;
+    this.ftpSslContext = ftpTlsEnabled ? ftpSslContext(ftpTlsCaFile) : null;
     s3 =
         S3Client.builder()
             .endpointOverride(URI.create(endpoint))
@@ -57,19 +72,67 @@ public class Storage {
             .build();
   }
 
+  static SSLContext ftpSslContext(String caFile) throws GeneralSecurityException, IOException {
+    var context = SSLContext.getInstance("TLS");
+    context.init(null, new javax.net.ssl.TrustManager[] {ftpTrustManager(caFile)}, null);
+    return context;
+  }
+
+  static X509TrustManager ftpTrustManager(String caFile)
+      throws GeneralSecurityException, IOException {
+    var certificateFactory = CertificateFactory.getInstance("X.509");
+    java.security.cert.Certificate ca;
+    try (var in = Files.newInputStream(Path.of(caFile))) {
+      ca = certificateFactory.generateCertificate(in);
+    }
+    var trust = KeyStore.getInstance(KeyStore.getDefaultType());
+    trust.load(null, null);
+    trust.setCertificateEntry("filegrid-ftp-ca", ca);
+    var trustManagers = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+    trustManagers.init(trust);
+    for (var manager : trustManagers.getTrustManagers()) {
+      if (manager instanceof X509TrustManager x509) return x509;
+    }
+    throw new GeneralSecurityException("No X.509 trust manager available");
+  }
+
+  static FTPSClient ftpsClient(SSLContext sslContext) {
+    var ftps = new FTPSClient(false, sslContext);
+    ftps.setEndpointCheckingEnabled(true);
+    ftps.setEnabledProtocols(new String[] {"TLSv1.3", "TLSv1.2"});
+    return ftps;
+  }
+
   private FTPClient ftp() throws IOException {
-    var f = new FTPClient();
+    FTPClient f;
+    if (ftpTlsEnabled) {
+      f = ftpsClient(ftpSslContext);
+    } else {
+      f = new FTPClient();
+    }
     f.setConnectTimeout(3000);
     f.setDefaultTimeout(10000);
     f.setDataTimeout(Duration.ofSeconds(30));
-    f.connect(host, port);
-    if (!f.login(user, password)) {
-      f.disconnect();
-      throw new IOException("FTP login refused");
+    try {
+      f.connect(host, port);
+      if (!f.login(user, password)) throw new IOException("FTP login refused");
+      if (f instanceof FTPSClient ftps) {
+        ftps.execPBSZ(0);
+        ftps.execPROT("P");
+      }
+      f.enterLocalPassiveMode();
+      f.setFileType(FTP.BINARY_FILE_TYPE);
+      return f;
+    } catch (IOException | RuntimeException e) {
+      if (f.isConnected()) {
+        try {
+          f.disconnect();
+        } catch (IOException ignored) {
+          // Preserve the connection or TLS error that caused cleanup.
+        }
+      }
+      throw e;
     }
-    f.enterLocalPassiveMode();
-    f.setFileType(FTP.BINARY_FILE_TYPE);
-    return f;
   }
 
   public String put(String dest, String key, byte[] bytes) throws IOException {

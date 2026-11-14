@@ -19,14 +19,21 @@ public class FileService {
   private final PolicyEngine policies;
   private final Storage storage;
   private final Crypto crypto;
+  private final AuditRecorder auditRecorder;
 
   public FileService(
-      JdbcTemplate db, ObjectMapper json, PolicyEngine policies, Storage storage, Crypto crypto) {
+      JdbcTemplate db,
+      ObjectMapper json,
+      PolicyEngine policies,
+      Storage storage,
+      Crypto crypto,
+      AuditRecorder auditRecorder) {
     this.db = db;
     this.json = json;
     this.policies = policies;
     this.storage = storage;
     this.crypto = crypto;
+    this.auditRecorder = auditRecorder;
   }
 
   public record FileData(
@@ -111,6 +118,10 @@ public class FileService {
   }
 
   public void audit(String actor, String action, String resource, String result) {
+    if ("DENIED".equals(result)) {
+      auditRecorder.denied(actor, action, resource, result);
+      return;
+    }
     db.update(
         "INSERT INTO audit_events(actor,action,resource_id,outcome,correlation_id) VALUES"
             + " (?,?,?,?,?)",
@@ -547,7 +558,7 @@ public class FileService {
         storage.put(
             f.storage(), f.storageKey(), f.encrypted() ? crypto.encrypt(bytes, f.nonce()) : bytes);
     db.update("UPDATE files SET status='UPLOADED',storage_version=? WHERE id=?", version, f.id());
-    db.update("UPDATE upload_sessions SET state='UPLOADED' WHERE id=?", id);
+    db.update("UPDATE upload_sessions SET state='UPLOADED',last_activity_at=now() WHERE id=?", id);
     audit(a.getName(), "UPLOAD", f.id().toString(), "SUCCESS");
     return session(id, a);
   }
@@ -588,7 +599,7 @@ public class FileService {
     String etag = storage.part(f.storageKey(), row.get("multipart_id").toString(), number, bytes);
     db.update("INSERT INTO upload_parts VALUES (?,?,?,?,?)", id, number, hash, bytes.length, etag);
     db.update("UPDATE files SET status='UPLOADING' WHERE id=?", f.id());
-    db.update("UPDATE upload_sessions SET state='UPLOADING' WHERE id=?", id);
+    db.update("UPDATE upload_sessions SET state='UPLOADING',last_activity_at=now() WHERE id=?", id);
     return session(id, a);
   }
 
@@ -608,7 +619,7 @@ public class FileService {
     } else
       ApiProblem.require(
           row.get("state").equals("UPLOADED"), 409, "INCOMPLETE", "Content has not been uploaded");
-    db.update("UPDATE files SET status='VERIFYING' WHERE id=?", f.id());
+    db.update("UPDATE files SET status='VERIFYING',uploaded_at=now() WHERE id=?", f.id());
     db.update("UPDATE upload_sessions SET state='VERIFYING' WHERE id=?", id);
     db.update(
         "INSERT INTO jobs(id,kind,resource_id) VALUES (?,'VERIFY',?) ON CONFLICT DO NOTHING",
@@ -666,7 +677,7 @@ public class FileService {
       audit(a.getName(), "DOWNLOAD", id.toString(), "CORRUPTED");
       throw e;
     }
-    audit(a.getName(), "DOWNLOAD", id.toString(), "SUCCESS");
+    audit(a.getName(), "DOWNLOAD_VERIFIED", id.toString(), "SUCCESS");
     return f;
   }
 

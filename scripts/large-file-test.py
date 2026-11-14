@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Bounded-memory transport fixture, not a semantic video validation test."""
 
-import argparse, base64, hashlib, json, time, urllib.request, threading
+import argparse, base64, hashlib, json, time, urllib.request, threading, shutil
 from pathlib import Path
 from smoke_test_import import Client
 
@@ -11,15 +11,18 @@ def main():
     p.add_argument("--url", default="https://localhost:8443/api/v1")
     p.add_argument("--size-mib", type=int, default=1229)
     p.add_argument("--api-pid", type=int)
+    p.add_argument("--runtime-dir", type=Path, default=Path(".runtime"))
     a = p.parse_args()
     c = Client(
         a.url,
-        ".runtime/accounts.properties",
-        ".runtime/tls.crt" if a.url.startswith("https:") else None,
+        a.runtime_dir / "accounts.properties",
+        a.runtime_dir / "tls.crt" if a.url.startswith("https:") else None,
     )
     size = a.size_mib * 1024 * 1024
     if size <= 0:
         p.error("size must be positive")
+    if shutil.disk_usage(".").free < 2 * size + 512 * 1024**2:
+        p.error("Insufficient free disk for fixture plus conservative multipart reserve; no data will be deleted")
     block = b"FILEGRID" + b"\0" * (8 * 1024 * 1024 - 8)
     sha = hashlib.sha256()
     for offset in range(0, size, len(block)):

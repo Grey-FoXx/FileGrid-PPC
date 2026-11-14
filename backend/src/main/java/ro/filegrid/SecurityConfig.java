@@ -5,6 +5,8 @@ import jakarta.servlet.http.*;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
@@ -14,11 +16,14 @@ import org.springframework.security.core.userdetails.*;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 @Configuration
 class SecurityConfig {
+  private static final Logger AUDIT = LoggerFactory.getLogger("ro.filegrid.security.audit");
+
   @Bean
   UserDetailsService users(@Value("${filegrid.accounts-file}") String path) throws IOException {
     var p = new Properties();
@@ -40,7 +45,7 @@ class SecurityConfig {
   }
 
   @Bean
-  SecurityFilterChain security(HttpSecurity h) throws Exception {
+  SecurityFilterChain security(HttpSecurity h, CategoryAdmissionFilter admission) throws Exception {
     h.csrf(c -> c.disable())
         .sessionManagement(
             s ->
@@ -52,14 +57,41 @@ class SecurityConfig {
                     .permitAll()
                     .anyRequest()
                     .authenticated())
-        .httpBasic(b -> b.authenticationEntryPoint((q, r, e) -> error(r, 401, "UNAUTHENTICATED")))
-        .exceptionHandling(e -> e.accessDeniedHandler((q, r, x) -> error(r, 403, "FORBIDDEN")));
+        .httpBasic(
+            b ->
+                b.authenticationEntryPoint(
+                    (q, r, e) -> {
+                      AUDIT.warn(
+                          "authentication_denied correlationId={} method={} path={} remote={}",
+                          Objects.toString(MDC.get("correlationId"), "unknown"),
+                          q.getMethod(),
+                          q.getRequestURI(),
+                          q.getRemoteAddr());
+                      error(r, 401, "UNAUTHENTICATED");
+                    }))
+        .exceptionHandling(
+            e ->
+                e.accessDeniedHandler(
+                    (q, r, x) -> {
+                      AUDIT.warn(
+                          "authorization_denied correlationId={} method={} path={} user={}"
+                              + " remote={}",
+                          Objects.toString(MDC.get("correlationId"), "unknown"),
+                          q.getMethod(),
+                          q.getRequestURI(),
+                          q.getUserPrincipal() == null ? "unknown" : q.getUserPrincipal().getName(),
+                          q.getRemoteAddr());
+                      error(r, 403, "FORBIDDEN");
+                    }))
+        .addFilterAfter(admission, BasicAuthenticationFilter.class);
     return h.build();
   }
 
   static void error(HttpServletResponse r, int status, String code) throws IOException {
     r.setStatus(status);
     r.setContentType("application/problem+json");
+    r.setHeader("Cache-Control", "no-store");
+    r.setHeader("X-Content-Type-Options", "nosniff");
     r.getWriter()
         .write(
             "{\"code\":\""
@@ -73,7 +105,7 @@ class SecurityConfig {
 }
 
 @Component
-@Order(-100)
+@Order(org.springframework.boot.autoconfigure.security.SecurityProperties.DEFAULT_FILTER_ORDER - 1)
 class CorrelationFilter extends OncePerRequestFilter {
   @Override
   protected void doFilterInternal(HttpServletRequest q, HttpServletResponse r, FilterChain c)

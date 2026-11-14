@@ -1,0 +1,237 @@
+{
+  "rule_files": [
+    "../alerts.yml"
+  ],
+  "evaluation_interval": "5s",
+  "tests": [
+    {
+      "name": "IncidentAvailabilityAtRisk",
+      "interval": "5s",
+      "input_series": [
+        {
+          "series": "filegrid_verification_oldest_seconds{category=\"INCIDENT\"}",
+          "values": "0 11x3 0x4"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10s",
+          "alertname": "IncidentAvailabilityAtRisk",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "category": "INCIDENT",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Incident verification exceeds 10 seconds"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30s",
+          "alertname": "IncidentAvailabilityAtRisk",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "IntegrityFailure",
+      "interval": "5s",
+      "input_series": [
+        {
+          "series": "filegrid_integrity_recent_failures{category=\"ALL\"}",
+          "values": "0 11x3 0x4"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10s",
+          "alertname": "IntegrityFailure",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "category": "ALL",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Recovered content failed integrity verification"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30s",
+          "alertname": "IntegrityFailure",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "MeterSequenceGaps",
+      "interval": "5s",
+      "input_series": [
+        {
+          "series": "filegrid_meter_sequence_gaps{category=\"METER_READING\"}",
+          "values": "0 11x3 0x4"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10s",
+          "alertname": "MeterSequenceGaps",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "category": "METER_READING",
+                "severity": "critical"
+              },
+              "exp_annotations": {
+                "summary": "Meter sequence gaps persist after 60 second grace"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30s",
+          "alertname": "MeterSequenceGaps",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "DroneTransferStalled",
+      "interval": "5s",
+      "input_series": [
+        {
+          "series": "filegrid_uploads_stalled{category=\"DRONE_VIDEO\"}",
+          "values": "0 11x3 0x4"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10s",
+          "alertname": "DroneTransferStalled",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "category": "DRONE_VIDEO",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Drone transfer has no progress for five minutes"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30s",
+          "alertname": "DroneTransferStalled",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "MLBacklog",
+      "interval": "5s",
+      "input_series": [
+        {
+          "series": "filegrid_ml_oldest_seconds{category=\"INCIDENT\"}",
+          "values": "0 121x3 0x4"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "10s",
+          "alertname": "MLBacklog",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "category": "INCIDENT",
+                "severity": "warning"
+              },
+              "exp_annotations": {
+                "summary": "Asynchronous ML backlog exceeds two minutes; files remain available"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "30s",
+          "alertname": "MLBacklog",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "MetadataUnavailable",
+      "interval": "5s",
+      "input_series": [
+        {
+          "series": "filegrid_metadata_available{category=\"ALL\"}",
+          "values": "1 0x5 1x5"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "20s",
+          "alertname": "MetadataUnavailable",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "critical",
+                "category": "ALL"
+              },
+              "exp_annotations": {
+                "summary": "Metadata service or API is unavailable"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "40s",
+          "alertname": "MetadataUnavailable",
+          "exp_alerts": []
+        }
+      ]
+    },
+    {
+      "name": "StorageErrors",
+      "interval": "5s",
+      "input_series": [
+        {
+          "series": "filegrid_operation_seconds_count{category=\"INCIDENT\",storage=\"S3\",outcome=\"error\"}",
+          "values": "0+1x60 60+0x60"
+        },
+        {
+          "series": "filegrid_operation_seconds_count{category=\"INCIDENT\",storage=\"S3\",outcome=\"success\"}",
+          "values": "0+9x121"
+        }
+      ],
+      "alert_rule_test": [
+        {
+          "eval_time": "4m",
+          "alertname": "StorageErrors",
+          "exp_alerts": [
+            {
+              "exp_labels": {
+                "severity": "warning",
+                "category": "INCIDENT",
+                "storage": "S3"
+              },
+              "exp_annotations": {
+                "summary": "Error rate exceeds 5 percent with at least 20 operations"
+              }
+            }
+          ]
+        },
+        {
+          "eval_time": "9m",
+          "alertname": "StorageErrors",
+          "exp_alerts": []
+        }
+      ]
+    }
+  ]
+}

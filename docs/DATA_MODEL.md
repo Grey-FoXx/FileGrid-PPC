@@ -14,3 +14,7 @@ Migration: backend/src/main/resources/db/migration/V1__core.sql. UUID resource I
 - `operations`: category/storage/operation, duration, bytes, outcome, correlation ID and time.
 
 Prototype simplifications: accounts are generated local properties loaded into Spring Security rather than a users table; category-specific document/video metadata and routing criteria are held in files.context rather than separate tables. One persistent external AES key is supported; rotation is not implemented. These choices do not change the public API. A subsequent schema change requires a new Flyway migration, not rewriting V1 after deployment.
+
+## V2 hardening migration
+
+V2__hardening_monitoring.sql adds nullable uploaded_at/available_at (older rows retain NULL), upload_sessions.last_activity_at and time-window/category indexes. It does not rewrite V1 or erase existing content. The private alerts table stores deduplicated fingerprint, bounded name/status, serialized labels/annotations, start/end and first/last delivery times; webhook retries update the same fingerprint. No public representation is introduced.

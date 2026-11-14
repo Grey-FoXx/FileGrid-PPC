@@ -53,6 +53,8 @@ class ApiIntegrationTest {
     p.add("filegrid.accounts-file", () -> root.resolve("accounts").toString());
     p.add("filegrid.encryption-key-file", () -> root.resolve("key").toString());
     p.add("filegrid.worker-token-file", () -> root.resolve("token").toString());
+    p.add("filegrid.alert-token-file", () -> root.resolve("token").toString());
+    p.add("filegrid.monitor-initial-delay", () -> "3600000");
     p.add(
         "filegrid.policy-file",
         () -> Path.of("../config/storage-policies.yaml").toAbsolutePath().toString());
@@ -62,6 +64,8 @@ class ApiIntegrationTest {
   @Autowired ObjectMapper json;
   @Autowired JdbcTemplate db;
   @Autowired JobService jobs;
+  @Autowired RuntimeMonitoring monitoring;
+  @Autowired io.micrometer.core.instrument.MeterRegistry registry;
   @MockitoBean Storage storage;
   final Map<String, byte[]> stored = new ConcurrentHashMap<>();
   final Map<Integer, byte[]> parts = new ConcurrentHashMap<>();
@@ -298,6 +302,150 @@ class ApiIntegrationTest {
         .andExpect(status().isBadGateway());
     call(as(get("/api/v1/stats/technical"), "admin"), 200);
     call(as(get("/api/v1/stats/business"), "admin"), 200);
+  }
+
+  @Test
+  void alertsAuthenticateDeduplicateAndResolve() throws Exception {
+    String payload =
+        "{\"alerts\":[{\"fingerprint\":\"deadbeef\",\"status\":\"firing\",\"startsAt\":\"2026-11-14T10:00:00Z\",\"labels\":{\"alertname\":\"IntegrityFailure\",\"category\":\"ALL\"},\"annotations\":{\"summary\":\"fixture\"}}]}";
+    mvc.perform(
+            post("/internal/v1/alerts/receive").contentType("application/json").content(payload))
+        .andExpect(status().isForbidden());
+    for (int n = 0; n < 2; n++)
+      call(
+          post("/internal/v1/alerts/receive")
+              .header("Authorization", "Bearer test-worker-token")
+              .contentType("application/json")
+              .content(payload),
+          200);
+    assertEquals(
+        1L,
+        db.queryForObject("SELECT count(*) FROM alerts WHERE fingerprint='deadbeef'", Long.class));
+    String resolved =
+        payload.replace(
+            "\"status\":\"firing\"", "\"status\":\"resolved\",\"endsAt\":\"2026-11-14T10:01:00Z\"");
+    call(
+        post("/internal/v1/alerts/receive")
+            .header("Authorization", "Bearer test-worker-token")
+            .contentType("application/json")
+            .content(resolved),
+        200);
+    assertEquals(
+        "RESOLVED",
+        db.queryForObject("SELECT status FROM alerts WHERE fingerprint='deadbeef'", String.class));
+  }
+
+  @Test
+  @org.springframework.transaction.annotation.Transactional
+  void sequenceGapGraceUsesServerObservationAndSurvivesNewerReadings() throws Exception {
+    String meter = "GAP-CLOCK";
+    for (int sequence : new int[] {1, 3, 4}) {
+      var body =
+          Map.of(
+              "schema_version",
+              1,
+              "reading_id",
+              meter + "-" + sequence,
+              "meter_id",
+              meter,
+              "sequence_number",
+              sequence,
+              "measured_at",
+              Instant.now().toString(),
+              "energy_kwh",
+              1000 + sequence);
+      var reply =
+          call(
+              as(post("/api/v1/meter-readings"), "meter")
+                  .contentType("application/json")
+                  .content(json.writeValueAsBytes(body)),
+              201);
+      if (sequence == 3)
+        db.update(
+            "UPDATE files SET created_at=now()-interval '2 minutes' WHERE id=?",
+            UUID.fromString(reply.get("fileId").asText()));
+    }
+    monitoring.sample();
+    assertEquals(
+        1.0,
+        registry
+            .get("filegrid.meter.sequence.gaps")
+            .tag("category", "METER_READING")
+            .gauge()
+            .value());
+    var late =
+        Map.of(
+            "schema_version",
+            1,
+            "reading_id",
+            meter + "-2",
+            "meter_id",
+            meter,
+            "sequence_number",
+            2,
+            "measured_at",
+            Instant.now().toString(),
+            "energy_kwh",
+            1002);
+    call(
+        as(post("/api/v1/meter-readings"), "meter")
+            .contentType("application/json")
+            .content(json.writeValueAsBytes(late)),
+        201);
+    monitoring.sample();
+    assertEquals(
+        0.0,
+        registry
+            .get("filegrid.meter.sequence.gaps")
+            .tag("category", "METER_READING")
+            .gauge()
+            .value());
+  }
+
+  @Test
+  @org.springframework.transaction.annotation.Transactional
+  void secondStorageConnectionFailureDoesNotLeakFileContentLength() throws Exception {
+    byte[] data = "fictitious document for response-boundary regression".getBytes();
+    var session =
+        session(
+            "connection", "CONNECTION_DOCUMENT", data, Map.of("applicationId", "FAIL-SECOND-READ"));
+    String sid = session.get("sessionId").asText(), fid = session.get("fileId").asText();
+    call(as(put("/api/v1/upload-sessions/" + sid + "/content"), "connection").content(data), 200);
+    call(as(post("/api/v1/upload-sessions/" + sid + "/complete"), "connection"), 202);
+    available(fid);
+    byte[] ciphertext = stored.get(fid + ".bin");
+    when(storage.open(eq("S3"), eq(fid + ".bin"), nullable(String.class)))
+        .thenReturn(new ByteArrayInputStream(ciphertext))
+        .thenThrow(new IOException("simulated second connection reset"));
+    var response =
+        mvc.perform(as(get("/api/v1/files/" + fid + "/content"), "connection"))
+            .andExpect(status().isServiceUnavailable())
+            .andReturn()
+            .getResponse();
+    assertTrue(response.getContentType().startsWith("application/problem+json"));
+    String declared = response.getHeader("Content-Length");
+    assertTrue(
+        declared == null || Integer.parseInt(declared) == response.getContentAsByteArray().length);
+    assertNull(response.getHeader("Content-Disposition"));
+  }
+
+  @Test
+  void unauthenticatedResponseCarriesCorrelationIdInHeaderAndProblemBody() throws Exception {
+    mvc.perform(get("/api/v1/me").header("X-Correlation-ID", "bh-check-unauth"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(header().string("X-Correlation-ID", "bh-check-unauth"))
+        .andExpect(jsonPath("$.correlationId").value("bh-check-unauth"));
+  }
+
+  @Test
+  void wrongBasicPasswordCarriesCorrelationIdInHeaderAndProblemBody() throws Exception {
+    mvc.perform(
+            get("/api/v1/me")
+                .with(httpBasic("admin", "incorrect"))
+                .header("X-Correlation-ID", "bh-check-bad-password"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(header().string("X-Correlation-ID", "bh-check-bad-password"))
+        .andExpect(jsonPath("$.correlationId").value("bh-check-bad-password"));
   }
 
   @AfterAll

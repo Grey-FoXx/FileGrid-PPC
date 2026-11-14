@@ -19,3 +19,9 @@ Only implemented query filters are declared in OpenAPI: files category/status/se
 Private worker contract: POST /internal/v1/jobs/claim returns {} or {jobId,attempt,incident,context}; complete uses POST /internal/v1/jobs/{id}/complete with attempt plus ml-result fields; fail uses /fail with attempt. X-Worker-Token is required; gateway blocks /internal/. Jobs use leases and bounded retries.
 
 Workflow verification and outstanding compatibility notes are in VALIDATION.md and HANDOFF_SECOND_COMPUTER.md. No unilateral frontend changes to contracts are allowed.
+
+## BH02–BH06 compatibility note
+
+Public OpenAPI and frontend sources are unchanged. Under category saturation, clients may receive the existing 429 problem shape with code CATEGORY_BUSY and Retry-After: 1. Retry the same Idempotency-Key, reading_id and multipart part content/checksum; do not generate a new logical request identity. Keep bounded backoff and preserve the selected file/session.
+
+Alerts currently have only an internal authenticated Alertmanager webhook blocked by the gateway. FRONTEND must not call /internal/ or invent public alert endpoints. A future public read/ack contract, authorization and pagination must be agreed together before implementation. Existing statistics/ML/file endpoints retain their schemas.

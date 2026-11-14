@@ -19,18 +19,21 @@ public class JobService {
   private final TransactionTemplate tx;
   private final String workerToken;
   private final Storage storage;
+  private final OperationMetrics metrics;
 
   public JobService(
       JdbcTemplate db,
       FileService files,
       PlatformTransactionManager manager,
       Storage storage,
+      OperationMetrics metrics,
       @Value("${filegrid.worker-token-file}") String tokenFile)
       throws IOException {
     this.db = db;
     this.files = files;
     this.tx = new TransactionTemplate(manager);
     this.storage = storage;
+    this.metrics = metrics;
     workerToken = Files.readString(Path.of(tokenFile)).trim();
   }
 
@@ -45,28 +48,53 @@ public class JobService {
         "Invalid worker credentials");
   }
 
-  private Map<String, Object> claim(String kind) {
+  private Map<String, Object> claim(String kind, String category) {
     return tx.execute(
         s -> {
           var rows =
               db.queryForList(
                   "UPDATE jobs SET state='RUNNING', attempts=attempts+1, lease_until=now()+interval"
-                      + " '120 seconds' WHERE id=(SELECT id FROM jobs WHERE kind=? AND attempts<5"
+                      + " '120 seconds' WHERE id=(SELECT id FROM jobs WHERE kind=? AND (?='' OR"
+                      + " resource_id IN (SELECT id FROM files WHERE category=?)) AND attempts<5"
                       + " AND ((state='PENDING' AND available_at<=now()) OR (state='RUNNING' AND"
                       + " lease_until<now())) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)"
                       + " RETURNING *",
-                  kind);
+                  kind,
+                  category,
+                  category);
           return rows.isEmpty() ? null : rows.getFirst();
         });
   }
 
-  @Scheduled(fixedDelay = 500, initialDelayString = "${filegrid.verify-initial-delay:0}")
+  @Scheduled(fixedDelay = 100, initialDelayString = "${filegrid.verify-initial-delay:0}")
+  public void verifyIncidents() {
+    verifyCategory("INCIDENT");
+  }
+
+  @Scheduled(fixedDelay = 100, initialDelayString = "${filegrid.verify-initial-delay:0}")
+  public void verifyDocuments() {
+    verifyCategory("CONNECTION_DOCUMENT");
+  }
+
+  @Scheduled(fixedDelay = 100, initialDelayString = "${filegrid.verify-initial-delay:0}")
+  public void verifyDrones() {
+    verifyCategory("DRONE_VIDEO");
+  }
+
   public void verify() {
-    var job = claim("VERIFY");
+    for (String category : List.of("INCIDENT", "CONNECTION_DOCUMENT", "DRONE_VIDEO"))
+      verifyCategory(category);
+  }
+
+  private void verifyCategory(String category) {
+    var job = claim("VERIFY", category);
     if (job == null) return;
     UUID jobId = (UUID) job.get("id"), fileId = (UUID) job.get("resource_id");
     int attempt = ((Number) job.get("attempts")).intValue();
     var f = files.raw(fileId);
+    long started = System.nanoTime();
+    boolean success = false;
+    org.slf4j.MDC.put("correlationId", f.operationId());
     try {
       files.check(f);
       tx.executeWithoutResult(
@@ -78,7 +106,8 @@ public class JobService {
                     attempt)
                 != 1) return;
             db.update(
-                "UPDATE files SET status='AVAILABLE',integrity_status='VERIFIED' WHERE id=?",
+                "UPDATE files SET status='AVAILABLE',integrity_status='VERIFIED',available_at=now()"
+                    + " WHERE id=?",
                 fileId);
             db.update("UPDATE upload_sessions SET state='AVAILABLE' WHERE file_id=?", fileId);
             files.audit("system", "VERIFY", fileId.toString(), "SUCCESS");
@@ -95,6 +124,7 @@ public class JobService {
                   incident);
             }
           });
+      success = true;
     } catch (Exception e) {
       boolean corrupt = e instanceof ApiProblem p && p.code.equals("INTEGRITY_FAILED");
       boolean finalFailure = corrupt || attempt >= 5;
@@ -117,11 +147,14 @@ public class JobService {
                 corrupt ? "FAILED" : "PENDING",
                 fileId);
           });
+    } finally {
+      metrics.record(f.category(), f.storage(), "verify", started, f.sizeBytes(), success);
+      org.slf4j.MDC.remove("correlationId");
     }
   }
 
   public Map<String, Object> claimMl() {
-    var j = claim("ML");
+    var j = claim("ML", "");
     if (j == null) return Map.of();
     UUID incident = (UUID) j.get("resource_id");
     db.update("UPDATE incidents SET ml_status='RUNNING' WHERE id=?", incident);

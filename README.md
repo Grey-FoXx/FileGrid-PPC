@@ -14,7 +14,7 @@ Premise: Linux, Docker Engine accesibil utilizatorului curent, Docker Compose v2
 
 Interfață: **https://localhost:8443**. Acceptă certificatul local generat pentru demonstrație. Conturile sunt generate în `.runtime/accounts.txt`. Parolele, certificatele și cheia AES nu sunt în Git. Nu șterge `.runtime/` dacă păstrezi datele: cheia este necesară decriptării documentelor. Numai gateway-ul publică un port.
 
-**Stare verificată:** BH01 a validat pornirea completă Docker Compose într-un proiect separat, cu runtime și volume noi pentru aplicație, HTTPS, toate categoriile/storage-urile și persistența după restart. Vezi [raportul BH01](docs/BH01_REPORT.md), [rezultatele anterioare](docs/VALIDATION.md) și [limitele rămase](docs/LIMITATIONS.md).
+**Stare verificată:** BH02–BH06 adaugă izolare măsurată pe trafic sintetic, FTPS, cont S3 restrâns, alerte și teste de cădere/recuperare. Rezultatele și limitele exacte sunt în [raportul de hardening](docs/BH02_06_REPORT.md). BH01 a validat pornirea completă Docker Compose într-un proiect separat, cu runtime și volume noi pentru aplicație, HTTPS, toate categoriile/storage-urile și persistența după restart. Vezi [raportul BH01](docs/BH01_REPORT.md), [rezultatele anterioare](docs/VALIDATION.md) și [limitele rămase](docs/LIMITATIONS.md).
 
 Pentru o instanță izolată, fără atingerea runtime-ului implicit:
 
@@ -45,7 +45,7 @@ python3 scripts/demo-data.py --count 22
 python3 scripts/large-file-test.py --size-mib 1229
 ```
 
-Aceste comenzi generează exclusiv fixtures fictive. Testul mare este un test de transport, nu de validare semantică a unui codec video. Testele de încărcare și întrerupere sunt în `scripts/load-test.py` și `scripts/fault-test.sh`.
+Aceste comenzi generează exclusiv fixtures fictive. Testul mare este un test de transport, nu de validare semantică a unui codec video. Pentru campania nouă folosește `scripts/isolation-test.py`, `scripts/verify-storage-security.py` și `scripts/verify-hardening.py`; comenzile și limitele sunt în raportul de hardening. Testele distructive se rulează exclusiv într-o fereastră dedicată pe proiectul izolat și păstrează datele/volumele.
 
 Verificări pentru dezvoltare:
 
@@ -62,7 +62,7 @@ Backend: Java 21; testele pornesc PostgreSQL 17 temporar fără Docker și trebu
 
 ## Colaborare și checkpoint
 
-Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de integrare: `develop`; BH01 este pe `feature/backend-hardening`, iar frontend-ul pe `feature/frontend-improvements`.
+Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de integrare: `develop`; BH01 și hardening-ul backend sunt pe `feature/backend-hardening`, iar frontend-ul pe `feature/frontend-improvements`.
 
 Citește [AGENTS.md](AGENTS.md), [raportul pentru calculatorul 2](docs/HANDOFF_SECOND_COMPUTER.md), [contractul OpenAPI](contracts/openapi.yaml), [arhitectura](docs/ARCHITECTURE.md), [modelul de date](docs/DATA_MODEL.md), [milestone-urile](docs/MILESTONES.md) și [task-urile frontend](docs/FRONTEND_TASKS.md).
 

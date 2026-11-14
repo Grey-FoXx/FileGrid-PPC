@@ -5,12 +5,16 @@ server:
     threads:
       max: 40
 spring:
+  task:
+    scheduling:
+      pool:
+        size: 6
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://postgres:5432/filegrid}
     username: ${POSTGRES_USER:filegrid}
     password: ${POSTGRES_PASSWORD}
     hikari:
-      maximum-pool-size: 16
+      maximum-pool-size: ${FILEGRID_SQL_POOL_SIZE:16}
       connection-timeout: 3000
   servlet:
     multipart:
@@ -30,6 +34,10 @@ management:
     distribution:
       percentiles-histogram:
         filegrid.operation: true
+      minimum-expected-value:
+        filegrid.operation: 1ms
+      maximum-expected-value:
+        filegrid.operation: 5m
 filegrid:
   policy-file: ${POLICY_FILE:/config/storage-policies.yaml}
   accounts-file: ${ACCOUNTS_FILE:/run/filegrid/accounts.properties}
@@ -43,6 +51,8 @@ filegrid:
   ftp-port: ${FTP_PORT:21}
   ftp-user: ${FTP_USER:filegrid}
   ftp-password: ${FTP_PASSWORD}
+  ftp-tls-enabled: ${FTP_TLS_ENABLED:true}
+  ftp-tls-ca-file: ${FTP_TLS_CA_FILE:/run/filegrid/ftp-tls.crt}
 logging:
   level:
     root: INFO
@@ -50,3 +60,4 @@ logging:
   structured:
     format:
       console: logstash
+  # External API field names and 60-minute statistics window remain unchanged.

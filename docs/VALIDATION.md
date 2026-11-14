@@ -1,3 +1,24 @@
+# Current backend-hardening verification — 2026-11-14
+
+Authoritative current result: [BH02_06_REPORT.md](BH02_06_REPORT.md). Historical native evidence is retained below and must not be confused with the container campaign.
+
+| Current check | Result / scope |
+|---|---|
+| Full hardened Compose start | PASS; existing volumes retained; one-shot provisioner succeeds repeatedly |
+| Original BH01 fixture recovery | PASS; four categories, DB/S3/FTPS, exact hashes |
+| Real Docker auth/idempotency basic suite | PASS; role/owner/session checks, concurrent exact/conflicting identities |
+| Real Docker outage suite | PASS; API resume, FTP/S3 isolation/recovery, SQL recovery, ML independence, sacrificial corruption/restoration |
+| FTPS/scoped secrets/restricted S3/ciphertext probes | PASS; wrong protocol/hostname rejected, app bucket-admin actions denied |
+| Alert rules | PASS; seven firing/resolution rule cases |
+| Live notification | PASS; meter-gap alert FIRING then RESOLVED through full private chain |
+| Simulator / ML Python tests | PASS; 2 + 3 tests |
+| Maven / 10x / network / final checks | Final counts and measurements are recorded in BH02_06_REPORT.md and PROGRESS_BACKEND.md |
+| Frontend/public contract scope | Sources unchanged; prior browser/build evidence retained, no new frontend implementation |
+
+Raw current artifacts remain ignored under `.runtime/bh01/`: verification.json, hardening-verification.json, alert-live.json, isolation-*.json, resource-samples.jsonl and network-verification.json when the network run succeeds. Do not infer a pass solely from a file name or runner implementation.
+
+---
+
 > Istoric: acest fișier descrie checkpoint-ul inițial. Verificările Docker ulterioare BH01 sunt în [BH01_REPORT.md](BH01_REPORT.md) și înlocuiesc limitările de pornire/TLS/vsftpd de mai jos. Celelalte limite rămân deschise.
 
 # Verification checkpoint — 2026-11-14

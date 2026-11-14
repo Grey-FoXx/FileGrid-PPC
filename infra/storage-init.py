@@ -4,8 +4,10 @@ from botocore.exceptions import ClientError
 s = boto3.client(
     "s3",
     endpoint_url="http://minio:9000",
-    aws_access_key_id=os.environ["S3_ACCESS_KEY"],
-    aws_secret_access_key=os.environ["S3_SECRET_KEY"],
+    # Bucket policy/versioning are administrative setup operations. Runtime
+    # API credentials are provisioned separately with bucket-only access.
+    aws_access_key_id=os.environ["MINIO_ROOT_USER"],
+    aws_secret_access_key=os.environ["MINIO_ROOT_PASSWORD"],
     region_name="us-east-1",
 )
 for attempt in range(60):

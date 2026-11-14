@@ -1,9 +1,8 @@
 #!/bin/sh
 set -eu
-id filegrid >/dev/null 2>&1 || useradd -m -d /srv/ftp -s /bin/bash filegrid
-printf 'filegrid:%s\n' "$FTP_PASSWORD" | chpasswd
-mkdir -p /srv/ftp/data
-chown root:root /srv/ftp
-chmod 755 /srv/ftp
-chown filegrid:filegrid /srv/ftp/data
-exec /usr/sbin/vsftpd /etc/vsftpd.conf
+test -r /run/filegrid/ftp-tls.crt
+test -r /run/filegrid/ftp-tls.key
+test -w /srv/ftp/data
+: "${FTP_USER:?FTP_USER is required}"
+: "${FTP_PASSWORD:?FTP_PASSWORD is required}"
+exec python /server.py

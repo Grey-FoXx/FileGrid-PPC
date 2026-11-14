@@ -13,7 +13,9 @@ services:
       - ${FILEGRID_RUNTIME_DIR:-.runtime}:/runtime
   postgres:
     image: postgres:17.6-bookworm
-    env_file: *service-env
+    env_file:
+      - path: ${FILEGRID_RUNTIME_DIR:-.runtime}/postgres.env
+        required: false
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks: [data]
@@ -27,9 +29,11 @@ services:
     build:
       context: .
       dockerfile: infra/minio/Dockerfile
-    env_file: *service-env
+    env_file:
+      - path: ${FILEGRID_RUNTIME_DIR:-.runtime}/minio.env
+        required: false
     entrypoint: [/bin/sh, -ec]
-    command: ['export MINIO_ROOT_USER="$$S3_ACCESS_KEY" MINIO_ROOT_PASSWORD="$$S3_SECRET_KEY"; exec minio server /data --console-address :9001']
+    command: ['exec minio server /data --console-address :9001']
     volumes:
       - minio-data:/data
     networks: [data]
@@ -43,17 +47,33 @@ services:
     build:
       context: .
       dockerfile: infra/storage-init.Dockerfile
-    env_file: *service-env
+    env_file:
+      - path: ${FILEGRID_RUNTIME_DIR:-.runtime}/minio.env
+        required: false
     depends_on:
       minio: {condition: service_healthy}
+    networks: [data]
+  minio-provision:
+    build:
+      context: .
+      dockerfile: infra/minio/provision.Dockerfile
+    env_file:
+      - path: ${FILEGRID_RUNTIME_DIR:-.runtime}/provision.env
+        required: false
+    depends_on:
+      storage-init: {condition: service_completed_successfully}
     networks: [data]
   ftp:
     build:
       context: .
       dockerfile: infra/ftp/Dockerfile
-    env_file: *service-env
+    env_file:
+      - path: ${FILEGRID_RUNTIME_DIR:-.runtime}/ftp.env
+        required: false
     volumes:
       - ftp-data:/srv/ftp/data
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/ftp-tls.crt:/run/filegrid/ftp-tls.crt:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/ftp-tls.key:/run/filegrid/ftp-tls.key:ro
     networks: [data]
     healthcheck:
       test: [CMD, /healthcheck.sh]
@@ -63,17 +83,32 @@ services:
     restart: unless-stopped
   api:
     build: backend
-    env_file: *service-env
+    env_file:
+      - path: ${FILEGRID_RUNTIME_DIR:-.runtime}/api.env
+        required: false
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/filegrid
+      FILEGRID_SQL_POOL_SIZE: '${FILEGRID_SQL_POOL_SIZE:-16}'
+      FILEGRID_LIMIT_METER_READING: '${FILEGRID_LIMIT_METER_READING:-3}'
+      FILEGRID_LIMIT_INCIDENT: '${FILEGRID_LIMIT_INCIDENT:-2}'
+      FILEGRID_LIMIT_CONNECTION_DOCUMENT: '${FILEGRID_LIMIT_CONNECTION_DOCUMENT:-2}'
+      FILEGRID_LIMIT_DRONE_VIDEO: '${FILEGRID_LIMIT_DRONE_VIDEO:-1}'
+      FILEGRID_LIMIT_CONTROL: '${FILEGRID_LIMIT_CONTROL:-4}'
+      FILEGRID_LIMIT_INTERNAL: '${FILEGRID_LIMIT_INTERNAL:-1}'
+
     volumes:
-      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/accounts.properties:/run/filegrid/accounts.properties:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/encryption.key:/run/filegrid/encryption.key:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/worker.token:/run/filegrid/worker.token:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/alerts.token:/run/filegrid/alerts.token:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/ftp-tls.crt:/run/filegrid/ftp-tls.crt:ro
       - ./config:/config:ro
     networks: [edge, data]
     depends_on:
       postgres: {condition: service_healthy}
       storage-init: {condition: service_completed_successfully}
+      minio-provision: {condition: service_completed_successfully}
       ftp: {condition: service_healthy}
     healthcheck:
       test: [CMD, curl, -fsS, http://localhost:8080/actuator/health]
@@ -90,7 +125,8 @@ services:
     ports:
       - '${FILEGRID_HTTPS_PORT:-8443}:8443'
     volumes:
-      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/tls.crt:/run/filegrid/tls.crt:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/tls.key:/run/filegrid/tls.key:ro
     networks: [edge]
     depends_on:
       api: {condition: service_healthy}
@@ -109,7 +145,7 @@ services:
       SIMULATOR_METERS: '${SIMULATOR_METERS:-10}'
       SIMULATOR_STATE: /state/pending.sqlite
     volumes:
-      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/meter.properties:/run/filegrid/accounts.properties:ro
       - ${FILEGRID_RUNTIME_DIR:-.runtime}/simulator:/state
     networks: [edge]
     depends_on:
@@ -123,7 +159,7 @@ services:
       OMP_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
     volumes:
-      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/worker.token:/run/filegrid/worker.token:ro
     networks: [edge]
     depends_on:
       api: {condition: service_healthy}
@@ -133,10 +169,20 @@ services:
     image: prom/prometheus:v3.7.3
     volumes:
       - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
     networks: [edge]
     depends_on:
       api: {condition: service_healthy}
+    restart: unless-stopped
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    volumes:
+      - ./infra/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/alerts.token:/run/filegrid/alerts.token:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/alertmanager:/alertmanager
+    networks: [edge]
     restart: unless-stopped
 networks:
   edge:

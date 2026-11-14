@@ -201,18 +201,21 @@ public class ApiController {
     boolean ok = false;
     try {
       f = files.downloadable(id, a);
-      response.setContentType("application/octet-stream");
-      response.setContentLengthLong(f.sizeBytes());
-      response.setHeader("X-Content-SHA256", f.sha256());
-      response.setHeader(
-          "Content-Disposition",
-          ContentDisposition.attachment()
-              .filename(f.filename(), java.nio.charset.StandardCharsets.UTF_8)
-              .build()
-              .toString());
+      // Acquire the second storage stream before committing content headers. A failed
+      // connection must produce a bounded problem response, not a stale file length.
       try (var in = files.plaintext(f)) {
+        response.setContentType("application/octet-stream");
+        response.setContentLengthLong(f.sizeBytes());
+        response.setHeader("X-Content-SHA256", f.sha256());
+        response.setHeader(
+            "Content-Disposition",
+            ContentDisposition.attachment()
+                .filename(f.filename(), java.nio.charset.StandardCharsets.UTF_8)
+                .build()
+                .toString());
         in.transferTo(response.getOutputStream());
       }
+      files.audit(a.getName(), "DOWNLOAD", id.toString(), "SUCCESS");
       ok = true;
     } finally {
       metrics.record(f.category(), f.storage(), "download", start, f.sizeBytes(), ok);

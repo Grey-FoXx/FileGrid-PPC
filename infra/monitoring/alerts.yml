@@ -1,0 +1,34 @@
+groups:
+  - name: filegrid-business
+    interval: 5s
+    rules:
+      - alert: IncidentAvailabilityAtRisk
+        expr: filegrid_verification_oldest_seconds{category="INCIDENT"} > 10
+        labels: {severity: critical, category: INCIDENT}
+        annotations: {summary: 'Incident verification exceeds 10 seconds'}
+      - alert: IntegrityFailure
+        expr: filegrid_integrity_recent_failures > 0
+        labels: {severity: critical, category: ALL}
+        annotations: {summary: 'Recovered content failed integrity verification'}
+      - alert: StorageErrors
+        expr: (sum by(category,storage) (rate(filegrid_operation_seconds_count{outcome="error"}[2m])) / sum by(category,storage) (rate(filegrid_operation_seconds_count[2m]))) > 0.05 and sum by(category,storage) (increase(filegrid_operation_seconds_count[2m])) >= 20
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: 'Error rate exceeds 5 percent with at least 20 operations'}
+      - alert: MeterSequenceGaps
+        expr: filegrid_meter_sequence_gaps > 0
+        labels: {severity: critical, category: METER_READING}
+        annotations: {summary: 'Meter sequence gaps persist after 60 second grace'}
+      - alert: DroneTransferStalled
+        expr: filegrid_uploads_stalled > 0
+        labels: {severity: warning, category: DRONE_VIDEO}
+        annotations: {summary: 'Drone transfer has no progress for five minutes'}
+      - alert: MLBacklog
+        expr: filegrid_ml_oldest_seconds > 120
+        labels: {severity: warning, category: INCIDENT}
+        annotations: {summary: 'Asynchronous ML backlog exceeds two minutes; files remain available'}
+      - alert: MetadataUnavailable
+        expr: filegrid_metadata_available == 0 or up{job="filegrid"} == 0
+        for: 10s
+        labels: {severity: critical, category: ALL}
+        annotations: {summary: 'Metadata service or API is unavailable'}

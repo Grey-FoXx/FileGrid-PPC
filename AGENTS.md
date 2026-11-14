@@ -35,3 +35,13 @@ The later user instruction authorized BH01 only, superseding the earlier global 
 See docs/BH01_REPORT.md and docs/PROGRESS_BACKEND.md. The initial checkpoint is on origin/develop; this BH01 checkpoint is local unless a later explicit push occurs.
 
 Docker works through the user's docker membership. If the IDE retains old groups, sg docker is the verified way to activate them. Do not change socket permissions. Keep project filegrid-bh01, FILEGRID_RUNTIME_DIR=.runtime/bh01 and FILEGRID_HTTPS_PORT=18443 together for test operations; no volume/data deletion is authorized. Test services remain running and their volumes are retained.
+
+## Current authorization — BH02–BH06
+
+The user explicitly approved executing all remaining BH02–BH06 in the latest request. This supersedes the earlier stage stop. Keep frontend/ and public contracts unchanged without coordination, preserve all existing data/volumes, and document real benchmark bounds and limitations. Maximum two subagents (implementation and verification), no recursion.
+
+## Hardening checkpoint guidance
+
+Current backend implementation/evidence is in docs/BH02_06_REPORT.md; older BH01/native reports are historical. FTP has migrated to pyftpdlib FTPS on the retained data volume; do not reintroduce the crashing vsftpd image based on older documentation. API uses a restricted S3 account and per-service secret mounts; preserve root/app separation. Do not rewrite Flyway V1/V2 after deployment; add a migration.
+
+Keep benchmarks separate from builds and disruptive tests. Fault/network runners target only filegrid-bh01 and must restore services/qdisc. Preserve generated runtime secrets, AES key and named volumes. Local test records stay retained; no volume or existing data deletion is authorized. No frontend/public-contract edits were included. Remaining HA/scaling/rotation/UI tasks require a separately scoped follow-up; do not declare all PDF requirements complete from this checkpoint.
