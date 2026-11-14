@@ -1,7 +1,7 @@
 <section class="page-heading">
           <div>
             <span class="eyebrow">CONTROL ȘI VIZIBILITATE</span>
-            <h1 tabindex="-1">{{ vm.tab() === 'health' ? 'System Health' : 'Rețeaua, în perspectivă.' }}</h1>
+            <h1 tabindex="-1">Rețeaua, în perspectivă.</h1>
             <p>Monitorizează fluxurile de date și incidentele din teren.</p>
           </div>
           <button class="primary" (click)="vm.go('upload')">
@@ -174,5 +174,3 @@
             </div>
           }
         </section>
-
-@if (vm.tab() === 'health') { <section class="panel"><h2>Limite de validare</h2><p>Pornire pe mașină curată printr-o singură comandă: <strong>cerință eliminatorie încă nevalidată</strong>. Serviciile funcționale local și validarea Compose nu certifică această cerință.</p><p>Acest ecran prezintă metrici API; nu demonstrează disponibilitatea individuală a storage-urilor, HA sau izolare la încărcare 10×.</p></section> }

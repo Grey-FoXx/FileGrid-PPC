@@ -67,7 +67,6 @@ export class WorkspaceStore implements OnDestroy {
   fileTotal = signal(0);
   selectedFile = signal<FileRecord | null>(null);
   uploads = new UploadController(this);
-  refreshingInBackground = false;
   private timer = window.setInterval(() => {
     if (this.me() && !this.loading()) void this.refresh(true);
   }, 5000);
@@ -119,7 +118,7 @@ export class WorkspaceStore implements OnDestroy {
       this.password = "";
       this.uploads.category = me.role === "CONNECTION_AGENT" ? "CONNECTION_DOCUMENT" : "INCIDENT";
       this.tab.set(this.canStats() ? "dashboard" : "files");
-      this.focus(["dashboard", "incidents", "command"].includes(this.tab()) ? "#cc-title" : "#workspace-content h1");
+      this.focus("#workspace-content h1");
       await this.refresh();
     } catch (e) {
       if (generation !== this.authGeneration) return;
@@ -174,7 +173,7 @@ export class WorkspaceStore implements OnDestroy {
         (!this.canIncidents() && tab === "incidents")) return;
     this.tab.set(tab);
     window.scrollTo({ top: 0 });
-    this.focus(["dashboard", "incidents", "command"].includes(this.tab()) ? "#cc-title" : "#workspace-content h1");
+    this.focus("#workspace-content h1");
     this.error.set("");
     await this.refresh();
   }
@@ -183,7 +182,6 @@ export class WorkspaceStore implements OnDestroy {
     this.refreshController?.abort();
     const controller = new AbortController();
     this.refreshController = controller;
-    this.refreshingInBackground = _silent;
     this.loading.set(true);
     const generation = this.authGeneration;
     const current = () => generation === this.authGeneration && !controller.signal.aborted;
@@ -191,7 +189,7 @@ export class WorkspaceStore implements OnDestroy {
     let networkFailure = false;
     const load = async <T>(section: string, path: string, apply: (value: T) => void) => {
       this.states.update(states => ({ ...states, [section]: {
-        loading: !_silent || !states[section]?.updatedAt, error: states[section]?.error || "", updatedAt: states[section]?.updatedAt || null,
+        loading: true, error: "", updatedAt: states[section]?.updatedAt || null,
       } }));
       try {
         const value = await this.api.request<T>(path, { signal: controller.signal });
@@ -213,22 +211,19 @@ export class WorkspaceStore implements OnDestroy {
     });
     const requests: Promise<void>[] = [
       load<Page<FileRecord>>("files", "/files?" + q, f => {
-        if (JSON.stringify(this.files()) !== JSON.stringify(f.items)) this.files.set(f.items);
+        this.files.set(f.items);
         this.fileTotal.set(f.total);
-        const selected = this.selectedFile();
-        const updated = selected && f.items.find(item => item.id === selected.id);
-        if (updated && JSON.stringify(selected) !== JSON.stringify(updated)) this.selectedFile.set(updated);
       }),
     ];
     if (this.canStats()) {
       requests.push(
         load<Business>("business", "/stats/business", b => this.business.set(b)),
-        load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { if (JSON.stringify(this.incidents()) !== JSON.stringify(i.items)) this.incidents.set(i.items); this.incidentTotal.set(i.total); }),
-        load<Page<Reading>>("meters", "/meter-readings?page=" + this.meterPage() + "&size=25" + (this.meterFilter ? "&meterId=" + encodeURIComponent(this.meterFilter.trim()) : ""), m => { if (JSON.stringify(this.readings()) !== JSON.stringify(m.items)) this.readings.set(m.items); this.meterTotal.set(m.total); }),
+        load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { this.incidents.set(i.items); this.incidentTotal.set(i.total); }),
+        load<Page<Reading>>("meters", "/meter-readings?page=" + this.meterPage() + "&size=25" + (this.meterFilter ? "&meterId=" + encodeURIComponent(this.meterFilter.trim()) : ""), m => { this.readings.set(m.items); this.meterTotal.set(m.total); }),
         load<{ series: Series[]; windowMinutes?: number }>("technical", "/stats/technical", t => { this.series.set(t.series); this.windowMinutes.set(t.windowMinutes ?? null); }),
       );
     } else if (this.me()?.role === "FIELD_OPERATOR") {
-      requests.push(load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { if (JSON.stringify(this.incidents()) !== JSON.stringify(i.items)) this.incidents.set(i.items); this.incidentTotal.set(i.total); }));
+      requests.push(load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { this.incidents.set(i.items); this.incidentTotal.set(i.total); }));
     }
     if (this.tab() === "policies")
       requests.push(load<unknown>("policies", "/policies", p => this.policies.set(p)));
