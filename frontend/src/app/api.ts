@@ -57,13 +57,40 @@ export interface Reading {
   fileId: string;
   measuredAt: string;
 }
+export interface ApiError extends Error {
+  status?: number;
+  code?: string;
+  correlationId?: string;
+}
 export class Api {
   private auth = "";
+  private credentials = new AbortController();
+  constructor(private onUnauthorized: () => void = () => {}) {}
   setCredentials(username: string, password: string) {
+    this.clear();
     this.auth = "Basic " + btoa(username + ":" + password);
   }
   clear() {
+    this.credentials.abort();
+    this.credentials = new AbortController();
     this.auth = "";
+  }
+  private async check(response: Response, credentials: AbortController) {
+    credentials.signal.throwIfAborted();
+    if (response.ok) return;
+    const problem = await response.json().catch(() => ({}));
+    credentials.signal.throwIfAborted();
+    const error: ApiError = Object.assign(
+      new Error(problem.detail || response.statusText || "Cererea a eșuat"),
+      {
+        status: response.status,
+        code: problem.code,
+        correlationId: problem.correlationId || response.headers.get("X-Correlation-ID"),
+      },
+    );
+    if (response.status === 401 && credentials === this.credentials)
+      this.onUnauthorized();
+    throw error;
   }
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
@@ -71,33 +98,31 @@ export class Api {
     headers.set("X-Correlation-ID", crypto.randomUUID());
     if (typeof init.body === "string")
       headers.set("Content-Type", "application/json");
-    const response = await fetch("/api/v1" + path, { ...init, headers });
-    if (!response.ok) {
-      const problem = await response
-        .json()
-        .catch(() => ({ detail: response.statusText }));
-      throw Object.assign(new Error(problem.detail || "Cererea a eșuat"), {
-        status: response.status,
-        code: problem.code,
-        correlationId: problem.correlationId,
-      });
-    }
+    const credentials = this.credentials;
+    const response = await fetch("/api/v1" + path, {
+      ...init,
+      headers,
+      signal: init.signal
+        ? AbortSignal.any([init.signal, credentials.signal])
+        : credentials.signal,
+    });
+    await this.check(response, credentials);
     if (response.status === 204) return undefined as T;
-    return (await response.json()) as T;
+    const value = (await response.json()) as T;
+    credentials.signal.throwIfAborted();
+    init.signal?.throwIfAborted();
+    return value;
   }
   async downloadResponse(id: string) {
+    const credentials = this.credentials;
     const response = await fetch("/api/v1/files/" + id + "/content", {
+      signal: credentials.signal,
       headers: {
         Authorization: this.auth,
         "X-Correlation-ID": crypto.randomUUID(),
       },
     });
-    if (!response.ok) {
-      const p = await response
-        .json()
-        .catch(() => ({ detail: "Descărcarea a eșuat" }));
-      throw new Error(p.detail);
-    }
+    await this.check(response, credentials);
     return response;
   }
 }

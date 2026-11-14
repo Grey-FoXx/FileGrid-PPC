@@ -2,7 +2,7 @@ import { Component, OnDestroy, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { createSHA256 } from "hash-wasm";
-import { Api, FileRecord, Session, Incident, Reading, Page } from "./api";
+import { Api, ApiError, FileRecord, Session, Incident, Reading, Page } from "./api";
 interface Business {
   files: number;
   readings: number;
@@ -38,13 +38,18 @@ interface SavedUpload {
   templateUrl: "./app.html",
 })
 export class AppComponent implements OnDestroy {
-  api = new Api();
+  api = new Api(() => {
+    if (!this.me()) return;
+    this.logout();
+    this.error.set("Autentificarea nu mai este validă. Autentifică-te din nou.");
+  });
   me = signal<{ username: string; role: string } | null>(null);
   tab = signal("dashboard");
   busy = signal(false);
   loading = signal(false);
   online = signal(true);
   private authGeneration = 0;
+  private refreshController: AbortController | null = null;
   error = signal("");
   notice = signal("");
   username = "admin";
@@ -101,6 +106,8 @@ export class AppComponent implements OnDestroy {
   ngOnDestroy() {
     clearInterval(this.timer);
     this.controller?.abort();
+    this.refreshController?.abort();
+    this.api.clear();
   }
   canStats() {
     return ["ADMIN", "DISPATCHER"].includes(this.me()?.role || "");
@@ -114,31 +121,44 @@ export class AppComponent implements OnDestroy {
     return ["ADMIN", "CONNECTION_AGENT"].includes(this.me()?.role || "");
   }
   async login() {
+    if (this.busy()) return;
+    const generation = ++this.authGeneration;
     this.busy.set(true);
     this.error.set("");
-    this.api.setCredentials(this.username, this.password);
     try {
-      this.me.set(await this.api.request("/me"));
+      this.api.setCredentials(this.username, this.password);
+      const me = await this.api.request<{ username: string; role: string }>("/me");
+      if (generation !== this.authGeneration) return;
+      this.me.set(me);
       this.password = "";
-      if (this.me()?.role === "CONNECTION_AGENT")
-        this.category = "CONNECTION_DOCUMENT";
-      if (!this.canStats()) this.tab.set("files");
+      this.category = me.role === "CONNECTION_AGENT" ? "CONNECTION_DOCUMENT" : "INCIDENT";
+      this.tab.set(this.canStats() ? "dashboard" : "files");
       await this.refresh();
     } catch (e) {
-      this.fail(e);
+      if (generation !== this.authGeneration) return;
+      this.me.set(null);
       this.api.clear();
+      this.fail(e);
     } finally {
-      this.busy.set(false);
+      if (generation === this.authGeneration) this.busy.set(false);
     }
   }
   logout() {
     this.authGeneration++;
     this.paused.set(true);
     this.controller?.abort();
+    this.refreshController?.abort();
     this.api.clear();
     this.me.set(null);
     this.password = "";
+    this.busy.set(false);
+    this.loading.set(false);
+    this.online.set(true);
     this.files.set([]);
+    this.fileTotal.set(0);
+    this.filePage.set(0);
+    this.search = "";
+    this.categoryFilter = "";
     this.incidents.set([]);
     this.readings.set([]);
     this.business.set(null);
@@ -146,6 +166,11 @@ export class AppComponent implements OnDestroy {
     this.policies.set(null);
     this.selectedFile.set(null);
     this.activeSession.set(null);
+    this.file = null;
+    this.incidentId = "";
+    this.checksum.set("");
+    this.progress.set(0);
+    this.uploadLabel.set("");
     this.notice.set("");
     this.error.set("");
   }
@@ -155,47 +180,53 @@ export class AppComponent implements OnDestroy {
     this.error.set("");
     await this.refresh();
   }
-  async refresh(silent = false) {
-    if (!this.me() || this.loading()) return;
+  async refresh(_silent = false) {
+    if (!this.me()) return;
+    this.refreshController?.abort();
+    const controller = new AbortController();
+    this.refreshController = controller;
     this.loading.set(true);
     const generation = this.authGeneration;
-    try {
-      const q = new URLSearchParams({
-        page: String(this.filePage()),
-        size: "25",
-        search: this.search,
-        category: this.categoryFilter,
-      });
-      const f = await this.api.request<Page<FileRecord>>("/files?" + q);
-      if (generation !== this.authGeneration) return;
-      this.online.set(true);
-      this.files.set(f.items);
-      this.fileTotal.set(f.total);
-      if (this.canStats()) {
-        const [b, i, m, t] = await Promise.all([
-          this.api.request<Business>("/stats/business"),
-          this.api.request<Page<Incident>>("/incidents"),
-          this.api.request<Page<Reading>>("/meter-readings"),
-          this.api.request<{ series: Series[] }>("/stats/technical"),
-        ]);
-        if (generation !== this.authGeneration) return;
-        this.business.set(b);
-        this.incidents.set(i.items);
-        this.readings.set(m.items);
-        this.series.set(t.series);
-      } else if (this.me()?.role === "FIELD_OPERATOR") {
-        this.incidents.set(
-          (await this.api.request<Page<Incident>>("/incidents")).items,
-        );
+    const current = () => generation === this.authGeneration && !controller.signal.aborted;
+    const errors: string[] = [];
+    let networkFailure = false;
+    const load = async <T>(path: string, apply: (value: T) => void) => {
+      try {
+        const value = await this.api.request<T>(path, { signal: controller.signal });
+        if (current()) apply(value);
+      } catch (e) {
+        if (!current()) return;
+        const problem = e as ApiError;
+        if (problem.status === undefined) networkFailure = true;
+        errors.push(this.problemMessage(e));
       }
-      if (this.tab() === "policies")
-        this.policies.set(await this.api.request("/policies"));
-    } catch (e) {
-      this.online.set(false);
-      if (generation === this.authGeneration && !silent) this.fail(e);
-    } finally {
-      this.loading.set(false);
+    };
+    const q = new URLSearchParams({
+      page: String(this.filePage()), size: "25", search: this.search, category: this.categoryFilter,
+    });
+    const requests: Promise<void>[] = [
+      load<Page<FileRecord>>("/files?" + q, f => {
+        this.files.set(f.items);
+        this.fileTotal.set(f.total);
+      }),
+    ];
+    if (this.canStats()) {
+      requests.push(
+        load<Business>("/stats/business", b => this.business.set(b)),
+        load<Page<Incident>>("/incidents", i => this.incidents.set(i.items)),
+        load<Page<Reading>>("/meter-readings", m => this.readings.set(m.items)),
+        load<{ series: Series[] }>("/stats/technical", t => this.series.set(t.series)),
+      );
+    } else if (this.me()?.role === "FIELD_OPERATOR") {
+      requests.push(load<Page<Incident>>("/incidents", i => this.incidents.set(i.items)));
     }
+    if (this.tab() === "policies")
+      requests.push(load<unknown>("/policies", p => this.policies.set(p)));
+    await Promise.all(requests);
+    if (!current()) return;
+    this.online.set(!networkFailure);
+    if (errors.length) this.error.set([...new Set(errors)].join(" · "));
+    this.loading.set(false);
   }
   async filter() {
     this.filePage.set(0);
@@ -213,6 +244,7 @@ export class AppComponent implements OnDestroy {
     this.activeSession.set(null);
   }
   async createIncident() {
+    const generation = this.authGeneration;
     this.error.set("");
     this.busy.set(true);
     try {
@@ -230,15 +262,16 @@ export class AppComponent implements OnDestroy {
           safetyCritical: this.safetyCritical,
         }),
       });
+      if (generation !== this.authGeneration) return;
       this.incidentId = result.id;
       this.notice.set(
         "Incident creat. Metadatele sunt disponibile; poți adăuga atașamentul.",
       );
       await this.refresh();
     } catch (e) {
-      this.fail(e);
+      if (generation === this.authGeneration) this.fail(e);
     } finally {
-      this.busy.set(false);
+      if (generation === this.authGeneration) this.busy.set(false);
     }
   }
   hashFile(file: File): Promise<string> {
@@ -473,6 +506,7 @@ export class AppComponent implements OnDestroy {
     );
   }
   async download(file: FileRecord) {
+    const generation = this.authGeneration;
     this.error.set("");
     this.notice.set("");
     try {
@@ -490,6 +524,7 @@ export class AppComponent implements OnDestroy {
         throw new Error(
           "Pentru descărcare streaming peste 128 MiB folosește Chrome/Edge cu File System Access.",
         );
+      if (generation !== this.authGeneration) return;
       const response = await this.api.downloadResponse(file.id);
       const hash = await createSHA256();
       hash.init();
@@ -506,6 +541,7 @@ export class AppComponent implements OnDestroy {
           }
           if (hash.digest("hex") !== file.sha256)
             throw new Error("SHA-256 descărcat nu corespunde!");
+          if (generation !== this.authGeneration) throw new DOMException("Logged out", "AbortError");
           await writer.close();
         } catch (e) {
           await writer.abort();
@@ -516,6 +552,7 @@ export class AppComponent implements OnDestroy {
         hash.update(new Uint8Array(await blob.arrayBuffer()));
         if (hash.digest("hex") !== file.sha256)
           throw new Error("SHA-256 descărcat nu corespunde!");
+        if (generation !== this.authGeneration) return;
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -523,20 +560,21 @@ export class AppComponent implements OnDestroy {
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       }
+      if (generation !== this.authGeneration) return;
       this.notice.set(
         "Descărcare verificată: SHA-256 original = SHA-256 recuperat.",
       );
     } catch (e) {
-      if ((e as Error).name !== "AbortError") this.fail(e);
+      if (generation === this.authGeneration) this.fail(e);
     }
   }
   async downloadReading(row: Reading) {
+    const generation = this.authGeneration;
     try {
-      await this.download(
-        await this.api.request<FileRecord>("/files/" + row.fileId),
-      );
+      const file = await this.api.request<FileRecord>("/files/" + row.fileId);
+      if (generation === this.authGeneration) await this.download(file);
     } catch (e) {
-      this.fail(e);
+      if (generation === this.authGeneration) this.fail(e);
     }
   }
   attachTo(incident: Incident) {
@@ -550,11 +588,14 @@ export class AppComponent implements OnDestroy {
     if (n < 1024 ** 3) return (n / 1024 ** 2).toFixed(1) + " MiB";
     return (n / 1024 ** 3).toFixed(2) + " GiB";
   }
+  private problemMessage(e: unknown) {
+    const x = e as ApiError;
+    const message = x.status === 403
+      ? "Nu ai permisiunea pentru această operație. " + x.message
+      : x.message || String(e);
+    return message + (x.correlationId ? " · ID " + x.correlationId : "");
+  }
   fail(e: unknown) {
-    const x = e as { message?: string; correlationId?: string };
-    this.error.set(
-      (x.message || String(e)) +
-        (x.correlationId ? " · ID " + x.correlationId : ""),
-    );
+    if ((e as Error).name !== "AbortError") this.error.set(this.problemMessage(e));
   }
 }
