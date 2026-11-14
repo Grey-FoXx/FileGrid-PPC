@@ -16,5 +16,5 @@ Owner: backend/, meter-simulator/, ml-service/, infra/, config/, contracts/, scr
 | BE10 | HA, backup restore and degraded-network campaign | BE09 | Durable acknowledgment/failover/recovery demonstrated | TODO |
 | BE11 | Gaps/invalid-message/outage simulator scenarios | BE03 | Explicitly configurable scenarios and assertions | TODO |
 | BE12 | Session/orphan cleanup and lease race hardening | BE04 | Concurrent expiration/retry/cancel tests; keep confirmed content intact | TODO |
-| BE13 | Publish current checkpoint | Git authentication | Remote feature branch SHA equals local commit; no force push | IN_PROGRESS |
+| BE13 | Publish current checkpoint | Git authentication | Remote feature branch SHA equals local commit; no force push | DONE |
 | BE14 | Complete PDF evidence presentation | BE08–BE10 | Re-run 10×, scale-out, netem, outage, HA/restore and attach raw measurements | TODO |

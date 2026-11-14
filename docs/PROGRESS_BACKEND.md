@@ -15,6 +15,8 @@ Verification: one-command Compose PASS; smoke PASS; focused policy/map Playwrigh
 
 Open requirements on this branch: measured 10× category isolation, horizontal scale-out, external automatic business alerts, complete per-hop tracing, storage-outage campaign in Compose, 200 ms/2% loss campaign, PostgreSQL HA/restore and a repeated >1 GB Compose run. These are not implied by demo controls or historical native evidence.
 
+Publication: the reviewed changes were pushed normally, without force, to `origin/feature/demo-command-center`; confirm the final SHA with the Git status recorded at handoff.
+
 ## Historical handoff — 2026-11-14
 
 Checkpoint branch: develop. Initial architecture commit: 8ca20c0. Final checkpoint SHA is obtained with git rev-parse HEAD and reported in the session handoff.
