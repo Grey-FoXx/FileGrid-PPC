@@ -73,7 +73,7 @@ test.beforeEach(async ({ page }) => {
           fileId: "file-1",
           uploadMode: "SINGLE",
           partSizeBytes: 8388608,
-          expiresAt: "2026-11-15T10:00:00Z",
+          expiresAt: "2099-01-01T00:00:00Z",
           status: "CREATED",
           confirmedParts: [],
         };

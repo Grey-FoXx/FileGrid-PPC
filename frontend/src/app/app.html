@@ -284,8 +284,21 @@
         <div class="upload-layout" [class.single-column]="!canIncidents()">
           <section class="panel">
             <h2>Detalii transfer</h2>
+            @if (savedForCurrentUser().length && !busy()) {
+              <div class="callout">
+                <p>Transferuri salvate: restaurează contextul, apoi selectează fișierul original.</p>
+                @for (upload of savedForCurrentUser(); track upload.sessionId || upload.idempotencyKey) {
+                  <button class="text-button" (click)="restoreUpload(upload)">
+                    Reia {{ upload.filename }} · {{ labels[upload.category] }}
+                  </button>
+                }
+              </div>
+            }
+            @if (requestedResume()) {
+              <button class="text-button" (click)="leaveResume()" [disabled]="busy()">Renunță la selecția sesiunii</button>
+            }
             <label
-              >Categorie<select [(ngModel)]="category" [disabled]="busy()">
+              >Categorie<select [(ngModel)]="category" [disabled]="busy() || !!recovery() || !!requestedResume()">
                 @if (canIncidents()) {
                   <option value="INCIDENT">Înregistrare de avarie</option>
                 }
@@ -303,9 +316,12 @@
               <label
                 >Incident asociat<select
                   [(ngModel)]="incidentId"
-                  [disabled]="busy()"
+                  [disabled]="busy() || !!recovery() || !!requestedResume()"
                 >
                   <option value="">Selectează sau creează un incident</option>
+                  @if (incidentId && !hasIncident(incidentId)) {
+                    <option [value]="incidentId">Incident salvat · {{ incidentId }}</option>
+                  }
                   @for (i of incidents(); track i.id) {
                     <option [value]="i.id">
                       {{ i.stationId }} · {{ i.zone }} · {{ i.id.slice(0, 8) }}
@@ -317,7 +333,7 @@
                 <label
                   >Tip atașament<select
                     [(ngModel)]="attachmentType"
-                    [disabled]="busy()"
+                    [disabled]="busy() || !!recovery() || !!requestedResume()"
                   >
                     <option value="BINARY">Document / diagnostic</option>
                     <option value="LEGACY_LOG">Log legacy</option>
@@ -325,7 +341,7 @@
                 ><label
                   >Sensibilitate<select
                     [(ngModel)]="sensitivity"
-                    [disabled]="busy()"
+                    [disabled]="busy() || !!recovery() || !!requestedResume()"
                   >
                     <option value="SENSITIVE">Sensibil</option>
                     <option value="NON_SENSITIVE">Nesensibil</option>
@@ -338,11 +354,11 @@
                 <label
                   >ID cerere<input
                     [(ngModel)]="applicationId"
-                    [disabled]="busy()" /></label
+                    [disabled]="busy() || !!recovery() || !!requestedResume()" /></label
                 ><label
                   >Tip document<input
                     [(ngModel)]="documentType"
-                    [disabled]="busy()"
+                    [disabled]="busy() || !!recovery() || !!requestedResume()"
                 /></label>
               </div>
               <p class="callout">
@@ -389,15 +405,26 @@
                 class="primary"
                 (click)="upload()"
                 [disabled]="
-                  busy() || !file || (category === 'INCIDENT' && !incidentId)
+                  busy() || !!recovery() || !file || (category === 'INCIDENT' && !incidentId)
                 "
               >
                 {{
                   busy() ? "Transfer în curs…" : "Încarcă / reia transferul →"
                 }}
               </button>
-              @if (busy()) {
-                <button class="secondary" (click)="pause()">Pauză</button>
+              @if (busy() && !cancelling()) {
+                <button class="secondary" (click)="pause()">{{ uploadPhase() === 'verifying' ? 'Oprește urmărirea' : 'Pauză' }}</button>
+              }
+              @if (activeSession(); as session) {
+                @if (!['AVAILABLE', 'VERIFYING', 'CANCELLED'].includes(session.status) && !recovery()) {
+                  <button class="secondary" (click)="cancelUpload()" [disabled]="cancelling()">
+                    {{ cancelling() ? 'Se anulează…' : 'Anulează transferul' }}
+                  </button>
+                }
+              }
+              @if (recovery(); as state) {
+                <p>{{ state.reason }}</p>
+                <button class="secondary" (click)="restartUpload()" [disabled]="busy()">Începe o sesiune nouă</button>
               }
             </div>
             <button
@@ -405,7 +432,7 @@
               (click)="clearSessions()"
               [disabled]="busy()"
             >
-              Elimină referințele sesiunilor locale
+              Elimină referințele locale ale contului
             </button>
           </section>
           @if (canIncidents()) {
@@ -447,7 +474,7 @@
               ><button
                 class="secondary"
                 (click)="createIncident()"
-                [disabled]="busy()"
+                [disabled]="busy() || !!recovery() || !!requestedResume()"
               >
                 + Creează incident
               </button>

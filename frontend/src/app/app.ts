@@ -27,8 +27,11 @@ interface SavedUpload {
   username: string;
   hash: string;
   category: string;
-  sessionId: string;
+  sessionId?: string;
+  idempotencyKey?: string;
   filename: string;
+  sizeBytes?: number;
+  contentType?: string;
   contextKey: string;
 }
 @Component({
@@ -84,6 +87,10 @@ export class AppComponent implements OnDestroy {
   uploadLabel = signal("");
   activeSession = signal<Session | null>(null);
   paused = signal(false);
+  cancelling = signal(false);
+  requestedResume = signal<SavedUpload | null>(null);
+  uploadPhase = signal("idle");
+  recovery = signal<{ upload: SavedUpload; reason: string } | null>(null);
   checksum = signal("");
   private controller: AbortController | null = null;
   private timer = window.setInterval(() => {
@@ -166,6 +173,10 @@ export class AppComponent implements OnDestroy {
     this.policies.set(null);
     this.selectedFile.set(null);
     this.activeSession.set(null);
+    this.cancelling.set(false);
+    this.requestedResume.set(null);
+    this.uploadPhase.set("idle");
+    this.recovery.set(null);
     this.file = null;
     this.incidentId = "";
     this.checksum.set("");
@@ -237,11 +248,15 @@ export class AppComponent implements OnDestroy {
     await this.refresh();
   }
   selectFile(event: Event) {
-    this.file = (event.target as HTMLInputElement).files?.[0] || null;
+    const input = event.target as HTMLInputElement;
+    this.file = input.files?.[0] || null;
+    input.value = "";
     this.checksum.set("");
     this.progress.set(0);
     this.uploadLabel.set("");
     this.activeSession.set(null);
+    this.recovery.set(null);
+    this.uploadPhase.set("idle");
   }
   async createIncident() {
     const generation = this.authGeneration;
@@ -274,25 +289,35 @@ export class AppComponent implements OnDestroy {
       if (generation === this.authGeneration) this.busy.set(false);
     }
   }
-  hashFile(file: File): Promise<string> {
+  hashFile(file: File, signal: AbortSignal): Promise<string> {
     return new Promise((resolve, reject) => {
+      signal.throwIfAborted();
       const worker = new Worker(new URL("./hash.worker", import.meta.url), {
         type: "module",
       });
+      const cleanup = () => {
+        signal.removeEventListener("abort", abort);
+        worker.terminate();
+      };
+      const abort = () => {
+        cleanup();
+        reject(new DOMException("Transfer oprit", "AbortError"));
+      };
+      signal.addEventListener("abort", abort, { once: true });
       worker.onmessage = ({ data }) => {
+        if (signal.aborted) return;
         if (data.progress !== undefined)
           this.uploadLabel.set("Calcul SHA-256 · " + data.progress + "%");
         if (data.hash) {
-          worker.terminate();
+          cleanup();
           resolve(data.hash);
-        }
-        if (data.error) {
-          worker.terminate();
+        } else if (data.error) {
+          cleanup();
           reject(new Error(data.error));
         }
       };
       worker.onerror = () => {
-        worker.terminate();
+        cleanup();
         reject(new Error("Calculul checksum a eșuat"));
       };
       worker.postMessage(file);
@@ -300,210 +325,403 @@ export class AppComponent implements OnDestroy {
   }
   saved(): SavedUpload[] {
     try {
-      return JSON.parse(localStorage.getItem("filegrid.uploads") || "[]");
+      const values: unknown = JSON.parse(localStorage.getItem("filegrid.uploads") || "[]");
+      return Array.isArray(values) ? values.filter((x): x is SavedUpload =>
+        x && typeof x.username === "string" && typeof x.hash === "string" &&
+        typeof x.category === "string" && typeof x.filename === "string" &&
+        typeof x.contextKey === "string" &&
+        (typeof x.sessionId === "string" || typeof x.idempotencyKey === "string"),
+      ) : [];
     } catch {
       return [];
     }
   }
-  saveUpload(value: SavedUpload) {
-    localStorage.setItem(
-      "filegrid.uploads",
-      JSON.stringify(
-        [
-          ...this.saved().filter((x) => x.sessionId !== value.sessionId),
-          value,
-        ].slice(-20),
-      ),
+  savedForCurrentUser() {
+    return this.saved().filter(x => x.username === this.me()?.username);
+  }
+  hasIncident(id: string) {
+    return this.incidents().some(x => x.id === id);
+  }
+  restoreUpload(upload: SavedUpload) {
+    if (this.busy() || upload.username !== this.me()?.username) return;
+    try {
+      if (upload.category === "CONNECTION_DOCUMENT" ? !this.canDocuments() : !this.canIncidents())
+        throw new Error("Rolul curent nu permite reluarea acestei categorii.");
+      const context = JSON.parse(upload.contextKey);
+      for (const key of ["incidentId", "applicationId", "documentType", "attachmentType", "sensitivity"])
+        if (typeof context[key] !== "string") throw new Error("Contextul sesiunii locale este invalid.");
+      if (!["CONNECTION_DOCUMENT", "INCIDENT", "DRONE_VIDEO"].includes(upload.category))
+        throw new Error("Categoria sesiunii locale este invalidă.");
+      // Normalize legacy document references: the API always received SENSITIVE.
+      if (upload.category === "CONNECTION_DOCUMENT") context.sensitivity = "SENSITIVE";
+      const restored = { ...upload, contextKey: JSON.stringify({
+        incidentId: context.incidentId, applicationId: context.applicationId,
+        documentType: context.documentType, attachmentType: context.attachmentType,
+        sensitivity: context.sensitivity,
+      }) };
+      this.saveUpload(restored);
+      this.category = upload.category;
+      this.incidentId = context.incidentId;
+      this.applicationId = context.applicationId;
+      this.documentType = context.documentType;
+      this.attachmentType = context.attachmentType;
+      this.sensitivity = context.sensitivity;
+      this.file = null;
+      this.activeSession.set(null);
+      this.recovery.set(null);
+      this.requestedResume.set(restored);
+      this.checksum.set("");
+      this.progress.set(0);
+      this.uploadLabel.set("Context restaurat. Selectează fișierul original pentru reluare.");
+      this.error.set("");
+      this.notice.set("");
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+  leaveResume() {
+    if (this.busy()) return;
+    this.requestedResume.set(null);
+    this.recovery.set(null);
+    this.activeSession.set(null);
+    this.file = null;
+    this.checksum.set("");
+    this.progress.set(0);
+    this.uploadLabel.set("");
+  }
+  private sameUpload(a: SavedUpload, b: SavedUpload) {
+    return a.username === b.username && (
+      a.idempotencyKey && b.idempotencyKey
+        ? a.idempotencyKey === b.idempotencyKey
+        : !!a.sessionId && a.sessionId === b.sessionId
     );
   }
-  async retry<T>(run: () => Promise<T>): Promise<T> {
+  saveUpload(value: SavedUpload) {
+    // Persist before POST: a lost creation response can be replayed with the same key.
+    const remaining = this.saved().filter(x => !this.sameUpload(x, value));
+    if (remaining.filter(x => x.username === value.username).length >= 100)
+      throw new Error("Ai 100 de sesiuni locale. Reia sau anulează transferurile; poți elimina explicit referințele locale ale contului.");
+    localStorage.setItem("filegrid.uploads", JSON.stringify([...remaining, value]));
+  }
+  private forgetUpload(value: SavedUpload) {
+    localStorage.setItem("filegrid.uploads", JSON.stringify(
+      this.saved().filter(x => !this.sameUpload(x, value)),
+    ));
+  }
+  private wait(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      signal.throwIfAborted();
+      const abort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Transfer oprit", "AbortError"));
+      };
+      const timer = window.setTimeout(() => {
+        signal.removeEventListener("abort", abort);
+        resolve();
+      }, ms);
+      signal.addEventListener("abort", abort, { once: true });
+    });
+  }
+  async retry<T>(run: () => Promise<T>, signal: AbortSignal): Promise<T> {
     for (let attempt = 0; ; attempt++) {
+      signal.throwIfAborted();
       try {
-        if (this.paused()) throw new DOMException("Paused", "AbortError");
-        return await run();
+        const value = await run();
+        signal.throwIfAborted();
+        return value;
       } catch (e) {
-        const status = (e as { status?: number }).status;
-        if (
-          this.paused() ||
-          attempt >= 4 ||
-          (status !== undefined && ![429, 502, 503, 504].includes(status))
-        )
-          throw e;
-        this.uploadLabel.set(
-          "Conexiune întreruptă · reîncercare " + (attempt + 1),
-        );
-        await new Promise((r) =>
-          setTimeout(
-            r,
-            Math.min(8000, 500 * 2 ** attempt) + Math.random() * 200,
-          ),
-        );
+        signal.throwIfAborted();
+        const problem = e as ApiError;
+        if (problem.name === "AbortError" || attempt >= 4 ||
+            (problem.status !== undefined && ![429, 502, 503, 504].includes(problem.status)) ||
+            (problem.status === undefined && !(e instanceof TypeError))) throw e;
+        this.uploadLabel.set("Conexiune întreruptă · reîncercare " + (attempt + 1));
+        await this.wait(Math.min(8000, 500 * 2 ** attempt) + Math.random() * 200, signal);
       }
     }
   }
   pause() {
+    if (!this.controller || this.cancelling()) return;
     this.paused.set(true);
-    this.controller?.abort();
-    this.uploadLabel.set(
-      "Transfer pus în pauză. Selectează același fișier pentru reluare.",
-    );
+    this.controller.abort();
+    this.uploadPhase.set("paused");
+    this.uploadLabel.set("Transfer pus în pauză. Reia cu același fișier.");
+  }
+  private recover(upload: SavedUpload, reason: string) {
+    this.recovery.set({ upload, reason });
+    this.uploadPhase.set("recovery");
+    this.uploadLabel.set(reason);
+  }
+  async restartUpload() {
+    const recovery = this.recovery();
+    if (!recovery || this.busy() || recovery.upload.username !== this.me()?.username) return;
+    try {
+      this.forgetUpload(recovery.upload);
+      this.requestedResume.set(null);
+      this.recovery.set(null);
+      this.activeSession.set(null);
+      await this.upload();
+    } catch (e) {
+      this.fail(e);
+    }
   }
   async upload() {
-    if (!this.file) return;
+    if (!this.file || !this.me() || this.busy() || this.recovery()) return;
+    const generation = this.authGeneration;
+    const username = this.me()!.username;
     const file = this.file;
     const category = this.category;
+    const metadata = {
+      incidentId: category === "INCIDENT" ? this.incidentId : undefined,
+      applicationId: category === "CONNECTION_DOCUMENT" ? this.applicationId : undefined,
+      documentType: this.documentType,
+      attachmentType: this.attachmentType,
+      sensitivity: category === "CONNECTION_DOCUMENT" ? "SENSITIVE" : this.sensitivity,
+    };
+    const contextKey = JSON.stringify({
+      incidentId: metadata.incidentId || "", applicationId: metadata.applicationId || "",
+      documentType: metadata.documentType, attachmentType: metadata.attachmentType,
+      sensitivity: metadata.sensitivity,
+    });
     this.error.set("");
     this.notice.set("");
     this.busy.set(true);
     this.paused.set(false);
     this.progress.set(0);
-    this.controller = new AbortController();
+    this.activeSession.set(null);
+    const controller = new AbortController();
+    this.controller = controller;
+    const signal = controller.signal;
+    const current = () => generation === this.authGeneration && this.controller === controller;
+    const check = () => {
+      signal.throwIfAborted();
+      if (!current()) throw new DOMException("Transfer încheiat", "AbortError");
+    };
+    let saved: SavedUpload | undefined;
     try {
-      const hash = await this.hashFile(file);
+      this.uploadPhase.set("hashing");
+      const hash = await this.hashFile(file, signal);
+      check();
       this.checksum.set(hash);
-      if (this.paused()) throw new DOMException("Paused", "AbortError");
-      const contextKey = JSON.stringify({
-        incidentId: category === "INCIDENT" ? this.incidentId : "",
-        applicationId:
-          category === "CONNECTION_DOCUMENT" ? this.applicationId : "",
-        documentType: this.documentType,
-        attachmentType: this.attachmentType,
-        sensitivity: this.sensitivity,
-      });
-      const previous = this.saved().find(
-        (x) =>
-          x.hash === hash &&
-          x.category === category &&
-          x.username === this.me()?.username &&
-          x.contextKey === contextKey,
+      const requested = this.requestedResume();
+      if (requested && (requested.hash !== hash || requested.filename !== file.name ||
+          (requested.sizeBytes !== undefined && requested.sizeBytes !== file.size)))
+        throw new Error("Fișierul selectat nu corespunde transferului salvat. Selectează fișierul original sau renunță la selecția sesiunii.");
+      const contentType = requested?.contentType || file.type || "application/octet-stream";
+      saved = requested || this.saved().find(x =>
+        x.hash === hash && x.category === category && x.username === username &&
+        x.contextKey === contextKey && x.filename === file.name &&
+        (x.sizeBytes === undefined || x.sizeBytes === file.size) &&
+        (x.contentType === undefined || x.contentType === contentType),
       );
-      let session: Session;
-      if (previous) {
-        session = await this.api.request<Session>(
-          "/upload-sessions/" + previous.sessionId,
-        );
-        if (session.status === "CANCELLED")
-          throw new Error(
-            "Sesiunea veche a fost anulată. Elimină sesiunile locale pentru un upload nou.",
-          );
-      } else {
-        const key = crypto.randomUUID();
-        session = await this.retry(() =>
-          this.api.request<Session>("/upload-sessions", {
-            method: "POST",
-            signal: this.controller!.signal,
-            headers: { "Idempotency-Key": key },
-            body: JSON.stringify({
-              category,
-              filename: file.name,
-              contentType: file.type || "application/octet-stream",
-              sizeBytes: file.size,
-              sha256: hash,
-              incidentId: category === "INCIDENT" ? this.incidentId : undefined,
-              applicationId:
-                category === "CONNECTION_DOCUMENT"
-                  ? this.applicationId
-                  : undefined,
-              documentType: this.documentType,
-              attachmentType: this.attachmentType,
-              sensitivity:
-                category === "CONNECTION_DOCUMENT"
-                  ? "SENSITIVE"
-                  : this.sensitivity,
-            }),
-          }),
-        );
-        this.saveUpload({
-          username: this.me()!.username,
-          hash,
-          category,
-          sessionId: session.sessionId,
-          filename: file.name,
-          contextKey,
-        });
+      if (!saved) {
+        saved = { username, hash, category, filename: file.name, sizeBytes: file.size,
+          contentType, contextKey, idempotencyKey: crypto.randomUUID() };
+        this.saveUpload(saved);
       }
+      let session: Session;
+      this.uploadPhase.set("creating");
+      this.uploadLabel.set("Recuperare / creare sesiune…");
+      if (saved.sessionId) {
+        try {
+          session = await this.retry(() => this.api.request<Session>(
+            "/upload-sessions/" + saved!.sessionId, { signal },
+          ), signal);
+        } catch (e) {
+          check();
+          if ((e as ApiError).status === 404) {
+            this.recover(saved, "Sesiunea nu mai există. Poți începe o sesiune nouă.");
+            return;
+          }
+          throw e;
+        }
+      } else {
+        session = await this.retry(() => this.api.request<Session>("/upload-sessions", {
+          method: "POST", signal,
+          headers: { "Idempotency-Key": saved!.idempotencyKey! },
+          body: JSON.stringify({ category, filename: file.name, contentType,
+            sizeBytes: file.size, sha256: hash, ...metadata }),
+        }), signal);
+        check();
+        saved = { ...saved, sessionId: session.sessionId };
+        this.saveUpload(saved);
+      }
+      check();
       this.activeSession.set(session);
-      if (!["AVAILABLE", "VERIFYING"].includes(session.status)) {
+      const monitoring = ["AVAILABLE", "VERIFYING"].includes(session.status);
+      if (["CANCELLED", "FAILED", "CORRUPTED"].includes(session.status)) {
+        this.recover(saved, "Sesiunea este închisă (" + session.status + "). Poți începe o sesiune nouă.");
+        return;
+      }
+      if (!monitoring && Date.parse(session.expiresAt) <= Date.now()) {
+        this.recover(saved, "Sesiunea a expirat. Poți începe o sesiune nouă.");
+        return;
+      }
+      if (!monitoring) {
+        this.uploadPhase.set("uploading");
         if (session.uploadMode === "SINGLE") {
           this.uploadLabel.set("Se transferă fișierul…");
           if (session.status !== "UPLOADED")
-            await this.retry(() =>
-              this.api.request(
-                "/upload-sessions/" + session.sessionId + "/content",
-                { method: "PUT", signal: this.controller!.signal, body: file },
-              ),
-            );
+            await this.retry(() => this.api.request(
+              "/upload-sessions/" + session.sessionId + "/content",
+              { method: "PUT", signal, headers: { "Content-Type": "application/octet-stream" }, body: file },
+            ), signal);
+          check();
           this.progress.set(100);
         } else {
-          const done = new Set(session.confirmedParts.map((x) => x.number));
+          const done = new Map(session.confirmedParts.map(x => [x.number, x.sizeBytes]));
           const count = Math.ceil(file.size / session.partSizeBytes);
+          let confirmedBytes = session.confirmedParts.reduce((sum, x) => sum + x.sizeBytes, 0);
+          this.progress.set(Math.round(confirmedBytes / file.size * 100));
           for (let n = 1; n <= count; n++) {
-            if (!done.has(n)) {
-              const part = file.slice(
-                (n - 1) * session.partSizeBytes,
-                Math.min(n * session.partSizeBytes, file.size),
-              );
-              const h = await createSHA256();
-              h.init();
-              h.update(new Uint8Array(await part.arrayBuffer()));
-              const partHash = h.digest("hex");
-              this.uploadLabel.set("Transfer parte " + n + " / " + count);
-              await this.retry(() =>
-                this.api.request(
-                  "/upload-sessions/" + session.sessionId + "/parts/" + n,
-                  {
-                    method: "PUT",
-                    signal: this.controller!.signal,
-                    headers: { "X-Part-SHA256": partHash },
-                    body: part,
-                  },
-                ),
-              );
-            }
-            this.progress.set(Math.round((n / count) * 100));
+            check();
+            if (done.has(n)) continue;
+            const part = file.slice((n - 1) * session.partSizeBytes,
+              Math.min(n * session.partSizeBytes, file.size));
+            const h = await createSHA256();
+            check();
+            h.init();
+            const bytes = new Uint8Array(await part.arrayBuffer());
+            check();
+            h.update(bytes);
+            const partHash = h.digest("hex");
+            this.uploadLabel.set("Transfer parte " + n + " / " + count);
+            await this.retry(() => this.api.request(
+              "/upload-sessions/" + session.sessionId + "/parts/" + n,
+              { method: "PUT", signal, headers: {
+                "X-Part-SHA256": partHash, "Content-Type": "application/octet-stream",
+              }, body: part },
+            ), signal);
+            check();
+            confirmedBytes += part.size;
+            this.progress.set(Math.round(confirmedBytes / file.size * 100));
           }
         }
-        await this.retry(() =>
-          this.api.request(
-            "/upload-sessions/" + session.sessionId + "/complete",
-            { method: "POST", signal: this.controller!.signal },
-          ),
-        );
+        await this.retry(() => this.api.request(
+          "/upload-sessions/" + session.sessionId + "/complete", { method: "POST", signal },
+        ), signal);
+        check();
+        this.activeSession.set({ ...session, status: "VERIFYING" });
       }
+      this.uploadPhase.set("verifying");
+      this.progress.set(100);
       this.uploadLabel.set("Transfer încheiat · verificare în storage");
       for (let n = 0; n < 120; n++) {
-        const result = await this.api.request<FileRecord>(
-          "/files/" + session.fileId,
-        );
+        check();
+        const result = await this.retry(() => this.api.request<FileRecord>(
+          "/files/" + session.fileId, { signal },
+        ), signal);
+        check();
         if (result.status === "AVAILABLE") {
-          this.notice.set(
-            "Fișier disponibil · SHA-256 verificat · " + result.storage,
-          );
+          this.forgetUpload(saved);
+          this.requestedResume.set(null);
+          this.activeSession.set({ ...session, status: "AVAILABLE" });
+          this.uploadPhase.set("complete");
+          this.notice.set("Fișier disponibil · SHA-256 verificat · " + result.storage);
           this.uploadLabel.set("Integritate confirmată");
           await this.refresh();
           return;
         }
-        if (["FAILED", "CORRUPTED", "CANCELLED"].includes(result.status))
-          throw new Error("Verificarea fișierului a eșuat: " + result.status);
-        await new Promise((r) => setTimeout(r, 1000));
+        if (["FAILED", "CORRUPTED", "CANCELLED"].includes(result.status)) {
+          this.recover(saved, "Fișierul este " + result.status + ". Poți începe o sesiune nouă.");
+          return;
+        }
+        await this.wait(1000, signal);
       }
-      this.notice.set(
-        "Verificarea continuă în fundal. Urmărește starea în Fișiere.",
-      );
+      this.notice.set("Verificarea continuă în fundal. Urmărește starea în Fișiere.");
     } catch (e) {
-      if (this.paused())
-        this.notice.set("Sesiunea este păstrată. Reia cu același fișier.");
+      if (!current()) return;
+      if (this.paused()) this.notice.set("Sesiunea este păstrată. Reia cu același fișier.");
+      else if (saved && (e as ApiError).code === "EXPIRED")
+        this.recover(saved, "Sesiunea a expirat. Poți începe o sesiune nouă.");
       else this.fail(e);
     } finally {
-      this.busy.set(false);
-      this.controller = null;
+      if (current()) {
+        this.busy.set(false);
+        this.controller = null;
+      }
+    }
+  }
+  async cancelUpload() {
+    const session = this.activeSession();
+    if (!session || this.cancelling() || ["AVAILABLE", "VERIFYING", "CANCELLED"].includes(session.status)) return;
+    const generation = this.authGeneration;
+    this.controller?.abort();
+    const controller = new AbortController();
+    this.controller = controller;
+    const current = () => generation === this.authGeneration && this.controller === controller;
+    this.cancelling.set(true);
+    this.busy.set(true);
+    this.paused.set(false);
+    this.error.set("");
+    this.notice.set("");
+    const confirmedCancellation = () => {
+      const saved = this.saved().find(x => x.username === this.me()?.username && x.sessionId === session.sessionId);
+      if (saved) this.forgetUpload(saved);
+      this.requestedResume.set(null);
+      this.activeSession.set(null);
+      this.recovery.set(null);
+      this.uploadPhase.set("cancelled");
+      this.uploadLabel.set("Transfer anulat pe server.");
+      this.notice.set("Transfer anulat. Poți încărca fișierul într-o sesiune nouă.");
+    };
+    try {
+      await this.retry(() => this.api.request("/upload-sessions/" + session.sessionId, {
+        method: "DELETE", signal: controller.signal,
+      }), controller.signal);
+      if (!current()) return;
+      confirmedCancellation();
+    } catch (e) {
+      if (!current()) return;
+      if ((e as ApiError).status === 404) {
+        const saved = this.saved().find(x => x.username === this.me()?.username && x.sessionId === session.sessionId);
+        if (saved) this.recover(saved, "Sesiunea nu mai există. Poți începe o sesiune nouă.");
+      } else {
+        // Completion may race DELETE, or DELETE may succeed while its response is lost.
+        if ((e as ApiError).status === 409 || (e as ApiError).status === undefined) {
+          try {
+            const latest = await this.api.request<Session>("/upload-sessions/" + session.sessionId, {
+              signal: controller.signal,
+            });
+            if (!current()) return;
+            if (latest.status === "CANCELLED") {
+              confirmedCancellation();
+              return;
+            }
+            this.activeSession.set(latest);
+          } catch (lookupError) {
+            if (!current()) return;
+            if ((lookupError as ApiError).status === 404) {
+              const saved = this.saved().find(x => x.username === this.me()?.username && x.sessionId === session.sessionId);
+              if (saved) this.recover(saved, "Sesiunea nu mai există. Poți începe o sesiune nouă.");
+              return;
+            }
+          }
+        }
+        this.fail(e);
+        this.uploadLabel.set("Anularea nu a fost confirmată. Sesiunea este păstrată; reia pentru starea actuală.");
+      }
+    } finally {
+      if (current()) {
+        this.busy.set(false);
+        this.cancelling.set(false);
+        this.controller = null;
+      }
     }
   }
   clearSessions() {
-    localStorage.removeItem("filegrid.uploads");
-    this.notice.set(
-      "Referințele locale au fost șterse. Sesiunile serverului expiră după 24h.",
-    );
+    if (this.busy()) return;
+    try {
+      localStorage.setItem("filegrid.uploads", JSON.stringify(
+        this.saved().filter(x => x.username !== this.me()?.username),
+      ));
+      this.recovery.set(null);
+      this.requestedResume.set(null);
+      this.activeSession.set(null);
+      this.notice.set("Referințele locale ale contului au fost șterse. Sesiunile serverului nu sunt anulate.");
+    } catch (e) {
+      this.fail(e);
+    }
   }
   async download(file: FileRecord) {
     const generation = this.authGeneration;
