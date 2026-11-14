@@ -133,6 +133,23 @@ public class Storage {
     };
   }
 
+  public void delete(String dest, String key, String version) throws IOException {
+    switch (dest) {
+      case "DATABASE" -> db.update("DELETE FROM blobs WHERE storage_key=?", key);
+      case "S3" -> {
+        var request = DeleteObjectRequest.builder().bucket(bucket).key(key);
+        if (version != null && !version.isBlank()) request.versionId(version);
+        s3.deleteObject(request.build());
+      }
+      case "FTP" -> {
+        var f = ftp();
+        try { f.deleteFile(key); }
+        finally { f.disconnect(); }
+      }
+      default -> throw new IllegalArgumentException("Unknown storage");
+    }
+  }
+
   public String beginMultipart(String key) {
     return s3.createMultipartUpload(
             CreateMultipartUploadRequest.builder().bucket(bucket).key(key).build())

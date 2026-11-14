@@ -18,6 +18,8 @@ class IntelligenceTest(unittest.TestCase):
             latitude=44.18,
             longitude=28.65,
             createdAt="2026-11-14T10:00:00Z",
+            zone="Banat",
+            eventType="EQUIPMENT_FAILURE",
             **kw,
         )
 
@@ -41,6 +43,15 @@ class IntelligenceTest(unittest.TestCase):
         r = analyze(self.model, a, [])
         self.assertEqual(r["clusterId"], -1)
         self.assertEqual(r["clusterSize"], 1)
+
+    def test_analysis_returns_only_spatial_temporal_compatible_member_ids(self):
+        a = self.incident()
+        b = {**a, "id": "b", "latitude": 44.1803}
+        other_zone = {**a, "id": "c", "latitude": 44.1802, "zone": "Dobrogea"}
+        other_event = {**a, "id": "d", "latitude": 44.1801, "eventType": "OUTAGE"}
+        r = analyze(self.model, a, [a, b, other_zone, other_event])
+        self.assertEqual(set(r["clusterMemberIds"]), {"a", "b"})
+        self.assertEqual(r["clusterSize"], 2)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,8 @@ management:
       percentiles-histogram:
         filegrid.operation: true
 filegrid:
+  demo-enabled: ${FILEGRID_DEMO_ENABLED:false}
+  demo-storm-delay-ms: ${FILEGRID_DEMO_STORM_DELAY_MS:1000}
   policy-file: ${POLICY_FILE:/config/storage-policies.yaml}
   accounts-file: ${ACCOUNTS_FILE:/run/filegrid/accounts.properties}
   encryption-key-file: ${ENCRYPTION_KEY_FILE:/run/filegrid/encryption.key}

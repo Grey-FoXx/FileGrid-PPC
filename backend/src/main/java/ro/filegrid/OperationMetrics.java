@@ -4,18 +4,22 @@ import io.micrometer.core.instrument.MeterRegistry;
 import java.util.concurrent.TimeUnit;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 class OperationMetrics {
   private final JdbcTemplate db;
   private final MeterRegistry registry;
+  private final DemoScope demoScope;
 
-  OperationMetrics(JdbcTemplate db, MeterRegistry registry) {
+  OperationMetrics(JdbcTemplate db, MeterRegistry registry, DemoScope demoScope) {
     this.db = db;
     this.registry = registry;
+    this.demoScope = demoScope;
   }
 
-  void record(
+  @Transactional
+  public void record(
       String category,
       String storage,
       String operation,
@@ -51,17 +55,19 @@ class OperationMetrics {
         .counter("filegrid.bytes", "category", category, "storage", storage, "operation", operation)
         .increment(bytes);
     try {
+      demoScope.lockMutation();
       db.update(
           "INSERT INTO"
-              + " operations(category,storage,operation,duration_ms,bytes,success,correlation_id)"
-              + " VALUES (?,?,?,?,?,?,?)",
+              + " operations(category,storage,operation,duration_ms,bytes,success,correlation_id,demo_scope)"
+              + " VALUES (?,?,?,?,?,?,?,?)",
           category,
           storage,
           operation,
           nanos / 1_000_000.0,
           bytes,
           success,
-          org.slf4j.MDC.get("correlationId"));
+          org.slf4j.MDC.get("correlationId"),
+          demoScope.scoped());
     } catch (Exception ignored) {
       /* metrics cannot change the acknowledged result */
     }

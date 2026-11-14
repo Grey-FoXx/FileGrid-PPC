@@ -30,14 +30,18 @@ def timestamp(value):
         return datetime.now(timezone.utc).timestamp()
 
 
-def cluster(current, context):
+def cluster_details(current, context):
+    zone = str(current.get("zone", ""))
+    event_type = str(current.get("eventType", ""))
     rows = [
         x
         for x in context
         if x.get("latitude") is not None and x.get("longitude") is not None
+        and str(x.get("zone", "")) == zone
+        and str(x.get("eventType", "")) == event_type
     ]
     if current.get("latitude") is None or current.get("longitude") is None:
-        return -1, 1
+        return -1, 1, [str(current.get("id"))] if current.get("id") is not None else []
     if not any(str(x["id"]) == str(current["id"]) for x in rows):
         rows.append(current)
     origin = timestamp(current.get("occurredAt", current.get("createdAt")))
@@ -53,7 +57,16 @@ def cluster(current, context):
     labels = DBSCAN(eps=1, min_samples=2).fit_predict(np.array(features))
     index = next(i for i, x in enumerate(rows) if str(x["id"]) == str(current["id"]))
     label = int(labels[index])
-    return label, int(sum(labels == label)) if label >= 0 else 1
+    members = (
+        [str(row.get("id")) for i, row in enumerate(rows) if labels[i] == label]
+        if label >= 0 else [str(current.get("id"))]
+    )
+    return label, int(sum(labels == label)) if label >= 0 else 1, members
+
+
+def cluster(current, context):
+    label, size, _ = cluster_details(current, context)
+    return label, size
 
 
 def analyze(model, incident, context):
@@ -64,7 +77,7 @@ def analyze(model, incident, context):
         sum(float(p) * (int(c) + 1) * 25 for p, c in zip(probabilities, model.classes_))
     )
     priority = ["LOW", "MEDIUM", "HIGH", "CRITICAL"][min(3, int(score - 1) // 25)]
-    label, size = cluster(incident, context)
+    label, size, member_ids = cluster_details(incident, context)
     urgency = float(os.environ.get("URGENCY_THRESHOLD", "75"))
     cluster_threshold = int(os.environ.get("CLUSTER_THRESHOLD", "3"))
     reasons = [
@@ -88,6 +101,7 @@ def analyze(model, incident, context):
         "priorityClass": priority,
         "clusterId": label,
         "clusterSize": size,
+        "clusterMemberIds": member_ids,
         "recommendation": recommendation,
         "reasons": reasons,
         "modelVersions": {"impact": MODEL_VERSION, "correlation": CLUSTER_VERSION},

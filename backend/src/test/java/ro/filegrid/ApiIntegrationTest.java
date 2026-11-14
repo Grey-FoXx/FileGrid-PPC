@@ -49,6 +49,8 @@ class ApiIntegrationTest {
     p.add("spring.datasource.url", () -> pg.getJdbcUrl("postgres", "postgres"));
     p.add("spring.datasource.username", () -> "postgres");
     p.add("filegrid.verify-initial-delay", () -> "3600000");
+    p.add("filegrid.demo-enabled", () -> "true");
+    p.add("filegrid.demo-storm-delay-ms", () -> "60000");
     p.add("spring.datasource.password", () -> "");
     p.add("filegrid.accounts-file", () -> root.resolve("accounts").toString());
     p.add("filegrid.encryption-key-file", () -> root.resolve("key").toString());
@@ -68,6 +70,11 @@ class ApiIntegrationTest {
 
   @BeforeEach
   void mockAdapters() throws Exception {
+    db.execute("TRUNCATE TABLE operations,audit_events,jobs,upload_parts,upload_sessions,idempotency_records,"
+        + "meter_readings,blobs,files,incidents,incident_groups,demo_resources RESTART IDENTITY CASCADE");
+    db.update("UPDATE demo_state SET mode='NORMAL',initialized_at=NULL,seed_version=NULL,generation_counter=0 WHERE id=1");
+    stored.clear();
+    parts.clear();
     when(storage.put(anyString(), anyString(), any(byte[].class)))
         .thenAnswer(
             x -> {
@@ -81,7 +88,8 @@ class ApiIntegrationTest {
               if (b == null) throw new IOException("missing object");
               return new ByteArrayInputStream(b);
             });
-    when(storage.beginMultipart(anyString())).thenReturn("upload-test");
+    when(storage.beginMultipart(anyString()))
+        .thenAnswer(x -> { parts.clear(); return UUID.randomUUID().toString(); });
     when(storage.part(anyString(), anyString(), anyInt(), any(byte[].class)))
         .thenAnswer(
             x -> {
@@ -298,6 +306,88 @@ class ApiIntegrationTest {
         .andExpect(status().isBadGateway());
     call(as(get("/api/v1/stats/technical"), "admin"), 200);
     call(as(get("/api/v1/stats/business"), "admin"), 200);
+  }
+
+  @Test
+  void persistentIncidentGroupsTransitionTogetherAndKeepResolvedHistory() throws Exception {
+    String first = call(as(post("/api/v1/incidents"), "admin")
+        .header("Idempotency-Key", UUID.randomUUID().toString()).contentType("application/json")
+        .content("{\"stationId\":\"GROUP-TEST-ST\",\"zone\":\"Banat\",\"eventType\":\"GROUP_TEST\",\"severity\":3,\"latitude\":45.75,\"longitude\":21.23}"), 201).get("id").asText();
+    String second = call(as(post("/api/v1/incidents"), "admin")
+        .header("Idempotency-Key", UUID.randomUUID().toString()).contentType("application/json")
+        .content("{\"stationId\":\"GROUP-TEST-ST\",\"zone\":\"Banat\",\"eventType\":\"GROUP_TEST\",\"severity\":4,\"latitude\":45.7503,\"longitude\":21.2302}"), 201).get("id").asText();
+    JsonNode firstIncident = call(as(get("/api/v1/incidents/" + first), "dispatcher"), 200);
+    JsonNode secondIncident = call(as(get("/api/v1/incidents/" + second), "dispatcher"), 200);
+    String group = firstIncident.get("groupId").asText();
+    assertEquals(group, secondIncident.get("groupId").asText());
+    assertEquals("NEW", secondIncident.get("interventionStatus").asText());
+    Map<String, Object> claimed = jobs.claimMl();
+    Map<String, Object> modelResult = new LinkedHashMap<>();
+    modelResult.put("priorityScore", 82.0); modelResult.put("priorityClass", "HIGH");
+    modelResult.put("recommendation", "HIGH_PRIORITY_REVIEW"); modelResult.put("reasons", List.of("synthetic integration fixture"));
+    modelResult.put("modelVersions", Map.of("impact", "test", "correlation", "test"));
+    modelResult.put("synthetic", true); modelResult.put("clusterMemberIds", List.of(first, second));
+    jobs.finishMl(UUID.fromString(claimed.get("jobId").toString()),
+        ((Number) claimed.get("attempt")).intValue(), modelResult, true);
+    assertEquals("COMPLETED", call(as(get("/api/v1/incidents/" + first + "/analysis"), "dispatcher"), 200).get("mlStatus").asText());
+    JsonNode groups = call(as(get("/api/v1/incident-groups"), "dispatcher"), 200);
+    JsonNode item = null;
+    for (JsonNode value : groups.get("items")) if (value.get("id").asText().equals(group)) item = value;
+    assertNotNull(item);
+    assertEquals(2, item.get("incidents").size());
+    assertTrue(item.get("groupAnalysis").get("interpretation").asText().contains("does not prove"));
+    mvc.perform(as(patch("/api/v1/incident-groups/" + group + "/status"), "field")
+            .contentType("application/json").content("{\"status\":\"DISPATCHED\"}"))
+        .andExpect(status().isForbidden());
+    call(as(patch("/api/v1/incident-groups/" + group + "/status"), "dispatcher")
+        .contentType("application/json").content("{\"status\":\"DISPATCHED\"}"), 200);
+    assertEquals("DISPATCHED", call(as(get("/api/v1/incidents/" + first), "dispatcher"), 200).get("interventionStatus").asText());
+    call(as(patch("/api/v1/incident-groups/" + group + "/status"), "admin")
+        .contentType("application/json").content("{\"status\":\"RESOLVED\"}"), 200);
+    mvc.perform(as(patch("/api/v1/incident-groups/" + group + "/status"), "dispatcher")
+            .contentType("application/json").content("{\"status\":\"NEW\"}"))
+        .andExpect(status().isConflict());
+    assertEquals("RESOLVED", call(as(get("/api/v1/incidents/" + second), "dispatcher"), 200).get("interventionStatus").asText());
+    assertEquals(0, call(as(get("/api/v1/incident-groups"), "dispatcher"), 200).get("items").findValuesAsText("id").stream().filter(group::equals).count());
+    JsonNode history = call(as(get("/api/v1/incident-groups?includeResolved=true"), "dispatcher"), 200);
+    assertTrue(history.get("items").findValuesAsText("id").contains(group));
+  }
+
+  @Test
+  void demoScopeSeedsAndResetsOnlyTaggedResources() throws Exception {
+    byte[] legacyReading = "{\"schema_version\":1,\"reading_id\":\"legacy-preserve\",\"meter_id\":\"legacy-meter\",\"sequence_number\":1,\"measured_at\":\"2026-11-14T10:00:00Z\",\"energy_kwh\":1.25}".getBytes();
+    call(as(post("/api/v1/meter-readings"), "meter").contentType("application/json").content(legacyReading), 201);
+    long preexistingFiles = db.queryForObject("SELECT count(*) FROM files", Long.class);
+    var fileIds = db.queryForList("SELECT id FROM files ORDER BY id", UUID.class);
+    assertTrue(call(as(get("/api/v1/me"), "admin"), 200).get("features").get("demo").asBoolean());
+    assertTrue(call(as(get("/api/v1/me"), "dispatcher"), 200).get("features").get("demo").asBoolean());
+    mvc.perform(as(post("/api/v1/demo/initialize"), "dispatcher")).andExpect(status().isForbidden());
+    JsonNode initialized = call(as(post("/api/v1/demo/initialize"), "admin"), 200);
+    assertTrue(initialized.get("initialized").asBoolean());
+    assertEquals(6, initialized.get("seedCounts").get("incidents").asInt());
+    assertEquals(4, initialized.get("seedCounts").get("readings").asInt());
+    assertEquals(13, initialized.get("seedCounts").get("files").asInt());
+    JsonNode scopedFiles = call(as(get("/api/v1/files?size=100"), "admin").header("X-FileGrid-Demo", "true"), 200);
+    assertTrue(scopedFiles.get("total").asInt() > 10);
+    JsonNode scopedReadings = call(as(get("/api/v1/meter-readings?size=100"), "dispatcher").header("X-FileGrid-Demo", "true"), 200);
+    assertEquals(4, scopedReadings.get("total").asInt());
+    JsonNode scopedGroups = call(as(get("/api/v1/incident-groups"), "dispatcher").header("X-FileGrid-Demo", "true"), 200);
+    assertEquals(3, scopedGroups.get("total").asInt());
+    JsonNode allGroups = call(as(get("/api/v1/incident-groups"), "dispatcher"), 200);
+    assertTrue(allGroups.get("total").asInt() >= scopedGroups.get("total").asInt());
+    for (JsonNode scopedGroup : scopedGroups.get("items"))
+      assertTrue(allGroups.get("items").findValuesAsText("id").contains(scopedGroup.get("id").asText()));
+    JsonNode storm = call(as(post("/api/v1/demo/mode"), "admin").contentType("application/json").content("{\"mode\":\"STORM\"}"), 200);
+    assertTrue(storm.get("generating").asBoolean());
+    assertEquals("NORMAL", call(as(post("/api/v1/demo/mode"), "admin").contentType("application/json").content("{\"mode\":\"NORMAL\"}"), 200).get("mode").asText());
+    JsonNode reset = call(as(post("/api/v1/demo/reset"), "admin"), 200);
+    assertTrue(reset.get("initialized").asBoolean());
+    assertEquals(6, reset.get("seedCounts").get("incidents").asInt());
+    assertEquals(13, reset.get("seedCounts").get("files").asInt());
+    assertTrue(db.queryForObject("SELECT count(*) FROM files", Long.class) >= preexistingFiles);
+    for (UUID fileId : fileIds) assertEquals(1, db.queryForObject("SELECT count(*) FROM files WHERE id=?", Long.class, fileId));
+    assertEquals(1L, db.queryForObject("SELECT count(*) FROM meter_readings WHERE reading_id='legacy-preserve'", Long.class));
+    assertEquals(0L, db.queryForObject("SELECT count(*) FROM incidents WHERE metadata::jsonb->>'demoSet'='old-nonexistent-tag'", Long.class));
   }
 
   @AfterAll

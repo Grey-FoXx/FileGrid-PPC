@@ -86,7 +86,21 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        ]
       },
       "get": {
         "summary": "Authorized paginated search",
@@ -133,6 +147,18 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           }
         ]
@@ -199,6 +225,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
           }
         ]
       }
@@ -242,6 +280,18 @@
             "in": "query",
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           }
         ]
@@ -288,6 +338,18 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           }
         ]
@@ -420,6 +482,18 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           }
         ]
@@ -781,7 +855,21 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        ]
       }
     },
     "/stats/business": {
@@ -808,6 +896,200 @@
                 }
               }
             }
+          }
+        },
+        "parameters": [
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/incident-groups": {
+      "get": {
+        "summary": "Persistent unresolved groups; includeResolved enables history",
+        "operationId": "get__incident-groups",
+        "parameters": [
+          {
+            "name": "includeResolved",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persistent groups with their member incidents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentGroupPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/incident-groups/{id}/status": {
+      "patch": {
+        "summary": "Advance a group NEW → DISPATCHED → RESOLVED",
+        "operationId": "patch__incident-groups_id_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "NEW",
+                      "DISPATCHED",
+                      "RESOLVED"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated group status"
+          },
+          "409": {
+            "description": "Invalid or stale transition"
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/demo": {
+      "get": {
+        "summary": "Demo capability, seed and generator status",
+        "operationId": "get__demo",
+        "responses": {
+          "200": {
+            "description": "Demo status"
+          }
+        }
+      }
+    },
+    "/demo/initialize": {
+      "post": {
+        "summary": "Create the bounded tagged demo seed once",
+        "operationId": "post__demo_initialize",
+        "responses": {
+          "200": {
+            "description": "Seed status"
+          },
+          "409": {
+            "description": "Demo-scoped data already exists"
+          }
+        }
+      }
+    },
+    "/demo/reset": {
+      "post": {
+        "summary": "Reset and reseed only tagged demo resources",
+        "operationId": "post__demo_reset",
+        "responses": {
+          "200": {
+            "description": "Reset seed status"
+          }
+        }
+      }
+    },
+    "/demo/mode": {
+      "post": {
+        "summary": "Set server-side NORMAL or STORM generation mode",
+        "operationId": "post__demo_mode",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "NORMAL",
+                      "STORM"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Demo mode status"
+          },
+          "409": {
+            "description": "Demo is not initialized"
           }
         }
       }
@@ -846,6 +1128,17 @@
           },
           "role": {
             "type": "string"
+          },
+          "features": {
+            "type": "object",
+            "properties": {
+              "demo": {
+                "type": "boolean"
+              },
+              "incidentGroups": {
+                "type": "boolean"
+              }
+            }
           }
         }
       },
@@ -1059,6 +1352,19 @@
             "items": {
               "$ref": "#/components/schemas/File"
             }
+          },
+          "groupId": {
+            "type": "string",
+            "nullable": true
+          },
+          "interventionStatus": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "DISPATCHED",
+              "RESOLVED"
+            ],
+            "nullable": true
           }
         }
       },
@@ -1121,6 +1427,63 @@
           },
           "total": {
             "type": "integer"
+          }
+        }
+      },
+      "IncidentGroupPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentGroup"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "IncidentGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "DISPATCHED",
+              "RESOLVED"
+            ]
+          },
+          "zone": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "integer"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Incident"
+            }
+          },
+          "groupAnalysis": {
+            "type": "object"
           }
         }
       }

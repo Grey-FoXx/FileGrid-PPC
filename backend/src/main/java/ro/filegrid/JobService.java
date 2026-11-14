@@ -19,18 +19,24 @@ public class JobService {
   private final TransactionTemplate tx;
   private final String workerToken;
   private final Storage storage;
+  private final IncidentGroupService groups;
+  private final DemoScope demoScope;
 
   public JobService(
       JdbcTemplate db,
       FileService files,
       PlatformTransactionManager manager,
       Storage storage,
+      IncidentGroupService groups,
+      DemoScope demoScope,
       @Value("${filegrid.worker-token-file}") String tokenFile)
       throws IOException {
     this.db = db;
     this.files = files;
     this.tx = new TransactionTemplate(manager);
     this.storage = storage;
+    this.groups = groups;
+    this.demoScope = demoScope;
     workerToken = Files.readString(Path.of(tokenFile)).trim();
   }
 
@@ -125,15 +131,23 @@ public class JobService {
     if (j == null) return Map.of();
     UUID incident = (UUID) j.get("resource_id");
     db.update("UPDATE incidents SET ml_status='RUNNING' WHERE id=?", incident);
-    var source = db.queryForMap("SELECT metadata,created_at FROM incidents WHERE id=?", incident);
+    var source = db.queryForMap(
+        "SELECT metadata,created_at,EXISTS(SELECT 1 FROM demo_resources WHERE resource_type='INCIDENT' AND resource_id=incidents.id::text) AS demo_scope FROM incidents WHERE id=?",
+        incident);
+    boolean isDemo = Boolean.TRUE.equals(source.get("demo_scope"));
     var input = files.decode(source.get("metadata").toString());
     input.put("id", incident);
     input.put("createdAt", ((java.sql.Timestamp) source.get("created_at")).toInstant().toString());
+    input.put("demoScope", isDemo);
     var context =
         db
             .queryForList(
                 "SELECT id,metadata,created_at FROM incidents WHERE created_at>now()-interval '30"
-                    + " minutes' ORDER BY created_at DESC LIMIT 1000")
+                    + " minutes' AND ((?=TRUE AND EXISTS(SELECT 1 FROM demo_resources r WHERE"
+                    + " r.resource_type='INCIDENT' AND r.resource_id=incidents.id::text)) OR"
+                    + " (?=FALSE AND NOT EXISTS(SELECT 1 FROM demo_resources r WHERE"
+                    + " r.resource_type='INCIDENT' AND r.resource_id=incidents.id::text)))"
+                    + " ORDER BY created_at DESC LIMIT 1000", isDemo, isDemo)
             .stream()
             .map(
                 x -> {
@@ -152,6 +166,14 @@ public class JobService {
   public void finishMl(UUID id, int attempt, Map<String, Object> result, boolean success) {
     tx.executeWithoutResult(
         s -> {
+          var resourceRows = db.queryForList("SELECT resource_id FROM jobs WHERE id=? AND kind='ML'", id);
+          if (success && !resourceRows.isEmpty()) {
+            String resourceId = resourceRows.getFirst().get("resource_id").toString();
+            boolean demo = Boolean.TRUE.equals(db.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM demo_resources WHERE resource_type='INCIDENT' AND resource_id=?)",
+                Boolean.class, resourceId));
+            db.queryForList("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", "incident-groups:" + demo);
+          }
           var rows =
               db.queryForList(
                   "SELECT * FROM jobs WHERE id=? AND kind='ML' AND state='RUNNING' AND attempts=?"
@@ -177,6 +199,10 @@ public class JobService {
                 422,
                 "ML_RESULT",
                 "Synthetic model marker required");
+            UUID incidentId = (UUID) j.get("resource_id");
+            boolean isDemo = Boolean.TRUE.equals(db.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM demo_resources WHERE resource_type='INCIDENT' AND resource_id=? )",
+                Boolean.class, incidentId.toString()));
             db.update(
                 "UPDATE jobs SET state='COMPLETED',lease_until=NULL,result=? WHERE id=?",
                 files.encode(result),
@@ -185,6 +211,20 @@ public class JobService {
                 "UPDATE incidents SET ml_status='COMPLETED',analysis=? WHERE id=?",
                 files.encode(result),
                 j.get("resource_id"));
+            if (result.containsKey("clusterMemberIds")) {
+              ApiProblem.require(result.get("clusterMemberIds") instanceof List<?>, 422,
+                  "ML_RESULT", "Cluster member IDs must be an array");
+              var clusterMemberIds = new ArrayList<UUID>();
+              try {
+                for (Object member : (List<?>) result.get("clusterMemberIds")) {
+                  ApiProblem.require(member instanceof String, 422, "ML_RESULT", "Invalid cluster member ID");
+                  clusterMemberIds.add(UUID.fromString(member.toString()));
+                }
+              } catch (IllegalArgumentException e) {
+                throw new ApiProblem(422, "ML_RESULT", "Invalid cluster member ID");
+              }
+              groups.reconcileModelMembers(incidentId, clusterMemberIds, isDemo);
+            }
           } else {
             boolean exhausted = attempt >= 5;
             db.update(
