@@ -1,6 +1,6 @@
 # Remaining milestones and dependencies
 
-M0: contracts and collaboration baseline committed locally. M1: core implementation complete with native integration evidence; clean Compose acceptance is still pending. M2: minimal two-model asynchronous synthetic demonstration verified natively.
+M0: common baseline is published on origin/develop. M1/BH01: fresh application-project Docker Compose startup, all categories/storage, HTTPS and restart persistence are verified (BH01_REPORT.md). M2 minimal two-model demonstration also runs in Compose. BH02–BH06 are not started; further implementation awaits explicit stage approval.
 
 M3 depends on M1: Docker/TLS/container validation, FTPS, restricted S3 application account, complete audit and authorization tests, automatic business alerts, normal/storm comparison and key-management hardening. Acceptance: measured p50/p95/p99, throughput/errors for used category/storage combinations, traceable operations and deliberately triggered alerts delivered to the UI.
 

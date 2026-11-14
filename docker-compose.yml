@@ -1,6 +1,6 @@
 name: filegrid
 x-env: &service-env
-  - path: .runtime/services.env
+  - path: ${FILEGRID_RUNTIME_DIR:-.runtime}/services.env
     required: false
 services:
   bootstrap:
@@ -10,7 +10,7 @@ services:
       dockerfile: infra/bootstrap.Dockerfile
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     volumes:
-      - ./.runtime:/runtime
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/runtime
   postgres:
     image: postgres:17.6-bookworm
     env_file: *service-env
@@ -56,7 +56,7 @@ services:
       - ftp-data:/srv/ftp/data
     networks: [data]
     healthcheck:
-      test: [CMD-SHELL, 'kill -0 1']
+      test: [CMD, /healthcheck.sh]
       interval: 5s
       timeout: 2s
       retries: 10
@@ -68,13 +68,19 @@ services:
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/filegrid
     volumes:
-      - ./.runtime:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
       - ./config:/config:ro
     networks: [edge, data]
     depends_on:
       postgres: {condition: service_healthy}
       storage-init: {condition: service_completed_successfully}
       ftp: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8080/actuator/health]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 24
     mem_limit: 1g
     restart: unless-stopped
   gateway:
@@ -84,9 +90,15 @@ services:
     ports:
       - '${FILEGRID_HTTPS_PORT:-8443}:8443'
     volumes:
-      - ./.runtime:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
     networks: [edge]
-    depends_on: [api]
+    depends_on:
+      api: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, --no-check-certificate, -O, /dev/null, https://127.0.0.1:8443/]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     restart: unless-stopped
   meter-simulator:
     build: meter-simulator
@@ -97,10 +109,11 @@ services:
       SIMULATOR_METERS: '${SIMULATOR_METERS:-10}'
       SIMULATOR_STATE: /state/pending.sqlite
     volumes:
-      - ./.runtime:/run/filegrid:ro
-      - ./.runtime/simulator:/state
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/simulator:/state
     networks: [edge]
-    depends_on: [api]
+    depends_on:
+      api: {condition: service_healthy}
     restart: unless-stopped
   ml-worker:
     build: ml-service
@@ -110,9 +123,10 @@ services:
       OMP_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
     volumes:
-      - ./.runtime:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
     networks: [edge]
-    depends_on: [api]
+    depends_on:
+      api: {condition: service_healthy}
     mem_limit: 512m
     restart: unless-stopped
   prometheus:
@@ -121,7 +135,8 @@ services:
       - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks: [edge]
-    depends_on: [api]
+    depends_on:
+      api: {condition: service_healthy}
     restart: unless-stopped
 networks:
   edge:

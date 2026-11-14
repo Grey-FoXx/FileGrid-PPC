@@ -13,7 +13,7 @@ Spring Boot modular backend, Angular UI, PostgreSQL, private MinIO, separate pri
 ## Agents and Git
 At most two subagents per computer: implementation and verification, no recursive delegation. Verification reports findings without concurrently rewriting implementation files. Work sequentially if subagents are unavailable. Do not assign both agents the same files.
 
-Use feature/backend-core and feature/frontend-core, integrate through develop; main contains demonstrable snapshots. No force push, no secrets, real personal data or large fixtures. Use one remote and a common initial commit.
+Use feature/backend-hardening and feature/frontend-improvements, integrate through develop; main contains demonstrable snapshots. No force push, no secrets, real personal data or large fixtures. Use one remote and a common initial commit.
 
 ## Before commit
 Run backend tests/package, frontend production build, Python tests and compose config when relevant. Record exact checks, blockers and commit in progress files. Smoke-test all categories, DB/S3/FTP routing, SHA-256 and meter deduplication before declaring MVP verified. Docker absence is a verification limitation, never a passing integration result.
@@ -27,3 +27,11 @@ Integration branch: develop. Match its exact SHA on both machines before branchi
 Docker config validation is not a container startup test. Native verification used PostgreSQL 17, MinIO and Python FTP; vsftpd/Nginx containers still need validation. Do not overwrite an executable JAR while its Java process is running: stop it or launch an immutable runtime copy for tests.
 
 Local IDE/runtime/test artifacts and generated credentials must remain ignored. No secrets or real personal documents may be committed. HTTPS push currently needs user authentication; never ask for tokens in chat and never force push.
+
+## BH01 completion and stage boundary — 2026-11-14
+
+The later user instruction authorized BH01 only, superseding the earlier global stop for that stage. BH01 is complete; BH02–BH06 now await explicit approval to start. BACKEND remains on feature/backend-hardening. FRONTEND owns feature/frontend-improvements and frontend/. No frontend or public contract changes were made for BH01.
+
+See docs/BH01_REPORT.md and docs/PROGRESS_BACKEND.md. The initial checkpoint is on origin/develop; this BH01 checkpoint is local unless a later explicit push occurs.
+
+Docker works through the user's docker membership. If the IDE retains old groups, sg docker is the verified way to activate them. Do not change socket permissions. Keep project filegrid-bh01, FILEGRID_RUNTIME_DIR=.runtime/bh01 and FILEGRID_HTTPS_PORT=18443 together for test operations; no volume/data deletion is authorized. Test services remain running and their volumes are retained.

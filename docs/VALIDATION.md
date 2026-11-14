@@ -1,3 +1,5 @@
+> Istoric: acest fișier descrie checkpoint-ul inițial. Verificările Docker ulterioare BH01 sunt în [BH01_REPORT.md](BH01_REPORT.md) și înlocuiesc limitările de pornire/TLS/vsftpd de mai jos. Celelalte limite rămân deschise.
+
 # Verification checkpoint — 2026-11-14
 
 ## Automated checks

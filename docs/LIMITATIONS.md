@@ -1,7 +1,7 @@
 # Known limitations at checkpoint
 
-- Docker socket access is denied on this host. Compose validates statically; clean container startup, Nginx TLS and the actual vsftpd image remain unverified. Native integration uses a separate Python FTP server, not the vsftpd container.
-- Git HTTPS push requires authentication. No remote publication is assumed until the develop commit SHA is verified remotely.
+- Resolved by BH01: Docker access through the activated docker group; fresh application-project startup, Nginx HTTPS, actual vsftpd and persistent restart are verified. See BH01_REPORT.md. The IDE may retain old supplementary groups; sg docker is the verified fallback.
+- The original checkpoint is confirmed on origin/develop. The BH01 commit is local on feature/backend-hardening; publishing it was not requested. Push authentication was not retested.
 - PostgreSQL is a shared availability dependency; no HA, host-loss protection, backup restore or measured 10x isolation is delivered.
 - Authentication is prototype Basic over configured HTTPS; accounts are local generated properties. AES-GCM uses one persistent local key, with no KMS or rotation. Keep its backup separately.
 - The API currently uses administrative MinIO credentials within private networks. A restricted application account remains a security task. MinIO Community is archived/source-only and built from a fixed commit.

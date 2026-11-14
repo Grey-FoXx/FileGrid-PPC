@@ -1,13 +1,15 @@
-# BACKEND handoff — 2026-11-14
+# BACKEND handoff — BH01, 2026-11-14
 
-Checkpoint branch: develop. Initial architecture commit: 8ca20c0. Final checkpoint SHA is obtained with git rev-parse HEAD and reported in the session handoff.
+Current branch: feature/backend-hardening; base f5b2580a4a669a27d90ad91a2f1af2e199df018b (confirmed on origin/develop). Obtain the BH01 commit with git rev-parse HEAD. User authorized BH01 only, followed by a local commit and stop. No push requested; no subagents used.
 
-Implemented: Spring Boot API/security, PostgreSQL schema, policies, actual DB/S3/FTP adapters, exact meter bytes/idempotency, durable simulator, AES-GCM documents, persistent multipart sessions, verification jobs, asynchronous two-model worker, basic metrics/audit and container/bootstrap configuration.
+Changes: isolated FILEGRID_RUNTIME_DIR; live HTTP startup probes; API/gateway/FTP health checks and API-ready dependencies; explicit API curl/CA; bounded build parallelism; seed/recover Compose verification script. No frontend/, public contract or business-logic changes.
 
-Checks: Maven package/4 JUnit tests; 2 simulator tests; 3 ML tests; native smoke on real PostgreSQL 17/MinIO/FTP; 1229 MiB streaming with -Xmx512m and SHA-256 identity; API restart resume; configurable routing change; FTP corruption and outage isolation; ML pause/recovery; live browser integration. Detailed measurements: VALIDATION.md.
+Actual stack: filegrid-bh01, runtime .runtime/bh01, HTTPS https://localhost:18443. PostgreSQL, MinIO, vsftpd, API, Nginx/Angular, simulator, ML and Prometheus are running; storage-init exited 0. Existing volumes/data were not deleted. Test stack and dedicated volumes are retained.
 
-Blockers: Docker socket permission; no Git HTTPS credentials for push. Container startup, vsftpd/TLS configuration, HA, 10x isolation, alerts and full security campaign remain unverified or unimplemented as listed in tasks.
+Passed: full image builds and startup; strict TLS/hostname and TLS1.3; DB/S3/FTP upload/download across all four categories; SHA-256 identity before/after full restart; persistent meter identity and ML result; repeated bootstrap preserves credentials/key/TLS; simulator ingestion; Prometheus scrape; real browser login/catalog. Initial IPv6 localhost gateway readiness failure fixed with 127.0.0.1 probes.
 
-Contract notes: v1 OpenAPI follows implemented filters (files: category/status/search; meters: meterId; lists: page/size). Date filters are not implemented. No direct storage URLs. Synthetic ML is not operationally validated.
+Detailed evidence and reproducible commands: BH01_REPORT.md. Original native/JUnit/Python results remain in VALIDATION.md. Stage BH01 did not repeat the native >1GB probe inside Docker and does not claim 10x isolation, alerts, HA or outage validation.
 
-Work stopped by user request after checkpoint. No subagents were spawned. Do not resume implementation without a new instruction.
+Docker group membership is now configured by the user. This IDE process still has old groups; sg docker successfully activates group 984 without changing socket permissions. Prefix every Compose operation with the same project/runtime/port variables.
+
+Next proposed stage: BH02 baseline and simultaneous category measurements with actual offered/processed rates and resource budget. Await explicit user approval; do not start BH02–BH06 automatically.

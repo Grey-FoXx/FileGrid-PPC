@@ -14,7 +14,16 @@ Premise: Linux, Docker Engine accesibil utilizatorului curent, Docker Compose v2
 
 Interfață: **https://localhost:8443**. Acceptă certificatul local generat pentru demonstrație. Conturile sunt generate în `.runtime/accounts.txt`. Parolele, certificatele și cheia AES nu sunt în Git. Nu șterge `.runtime/` dacă păstrezi datele: cheia este necesară decriptării documentelor. Numai gateway-ul publică un port.
 
-**Stare verificată:** build backend/frontend, teste automate și integrare nativă cu PostgreSQL 17, MinIO și FTP reale. **Pornirea completă prin Docker Compose pe o mașină curată nu a fost executată:** utilizatorul curent nu are acces la socket-ul Docker. Validarea YAML Compose nu echivalează cu validarea containerelor. Vezi [rezultatele](docs/VALIDATION.md) și [limitele](docs/LIMITATIONS.md).
+**Stare verificată:** BH01 a validat pornirea completă Docker Compose într-un proiect separat, cu runtime și volume noi pentru aplicație, HTTPS, toate categoriile/storage-urile și persistența după restart. Vezi [raportul BH01](docs/BH01_REPORT.md), [rezultatele anterioare](docs/VALIDATION.md) și [limitele rămase](docs/LIMITATIONS.md).
+
+Pentru o instanță izolată, fără atingerea runtime-ului implicit:
+
+```bash
+COMPOSE_PROJECT_NAME=filegrid-bh01 FILEGRID_RUNTIME_DIR=.runtime/bh01 FILEGRID_HTTPS_PORT=18443 COMPOSE_BAKE=false ./scripts/start.sh
+python3 scripts/verify-compose.py seed
+```
+
+Păstrează aceleași variabile la comenzile Compose ulterioare. După un restart fără ștergerea volumelor, `python3 scripts/verify-compose.py recover` verifică aceleași fixtures. Aceste teste suplimentare folosesc Python 3.12 pe host; pornirea necesită doar Docker/Compose și shell. Dacă procesul IDE nu vede încă noul grup Docker, folosește `sg docker -c 'comanda Docker sau de pornire, cu aceleași variabile'`. Nu modifica permisiunile socket-ului.
 
 ## Fluxuri
 
@@ -53,7 +62,7 @@ Backend: Java 21; testele pornesc PostgreSQL 17 temporar fără Docker și trebu
 
 ## Colaborare și checkpoint
 
-Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de integrare la predare: `develop`.
+Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de integrare: `develop`; BH01 este pe `feature/backend-hardening`, iar frontend-ul pe `feature/frontend-improvements`.
 
 Citește [AGENTS.md](AGENTS.md), [raportul pentru calculatorul 2](docs/HANDOFF_SECOND_COMPUTER.md), [contractul OpenAPI](contracts/openapi.yaml), [arhitectura](docs/ARCHITECTURE.md), [modelul de date](docs/DATA_MODEL.md), [milestone-urile](docs/MILESTONES.md) și [task-urile frontend](docs/FRONTEND_TASKS.md).
 
