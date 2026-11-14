@@ -67,3 +67,30 @@ Checks: `npm --prefix frontend run build` PASS; `npm --prefix frontend test` PAS
 Real environment: Docker 28.0.1 is accessible here. Started the existing Compose stack without tracked infrastructure changes and ran `python3 scripts/smoke-test.py`: PASS Database original/dedup/conflict, FTP and S3 attachment recovery, private document recovery/second-owner denial, drone-category recovery, ML-independent availability. `scripts/start.sh` itself ended with readiness timeout: inside gateway `getent hosts localhost` returns ::1; Nginx IPv4 responds at https://127.0.0.1:8443 and external https://localhost:8443 returns 200. This script/configuration issue is a backend-owned follow-up; no clean-start success is claimed. Services remain running.
 
 Remaining in this authorized run: FE08 modularization, final fixture/live browser checks against latest gateway image, manual screenshots and test access handoff. No backend/contracts/infrastructure source changes, no merge or push.
+
+
+## P2 FE08 and final frontend acceptance — 2026-11-14
+
+P1 commit: `70e2f14` — `feat(frontend): complete accessible dashboards and verified download UX`.
+Final local commit subject: `feat(frontend): modularize workspace and finalize live acceptance` (this entry is included in that commit; see git log for SHA).
+
+- AppComponent is now a 17-line shell with six standalone pages: dashboard/upload/files/incidents/meters/policies. WorkspaceStore is provided once by the shell and shared by all pages. UploadController contains upload forms/session/hash/retry/cancel lifecycle through a typed host; DownloadController and the sole Api instance are reused. Auth generations, abort scopes and timers retain their existing ownership. Verification subagent found no material lifecycle/auth regressions.
+- Upload state resets all form context on account changes. Session hashing still uses the same worker URL and incremental implementation. API endpoint names and shared contracts remain unchanged.
+- Added populated-layout regression across all six pages, including unbroken long filenames/model metadata and expanded policy JSON at 320/390/768/1440 px. It found real file-detail heading overflow at 320 px; fixed wrapping. Sidebar supports constrained-height scrolling. Added readable small positive rate formatting (six decimal places for operations/s, bounded B/s formatting), Romanian breadcrumbs and an accessible mobile home link.
+- Storm priority puts reported critical-safety cases and IMMEDIATE_HUMAN_REVIEW ahead of ordinary numeric scores; displays the reported safety flag separately. Existing optional metadata is consumed without changing the API. A regression covers a lower-score immediate review ahead of a higher-score ordinary recommendation.
+- Added three opt-in Compose acceptance cases: actual ML worker pause/unpause with verified download before analysis completion; all four human roles on mobile; real multipart 8 MiB + 19 byte transfer paused/reloaded/resumed without retransmitting part 1, followed by byte-identical recovery. The original live document/FTP workflow is also included.
+
+Final checks against the latest Docker-built gateway image:
+
+- `npm --prefix frontend run build` PASS (production bundle, worker included).
+- `docker compose up --build -d --no-deps gateway` PASS (latest frontend served; backend not restarted or edited).
+- `FILEGRID_BASE_URL=https://localhost:8443 FILEGRID_LIVE=1 FILEGRID_COMPOSE_LIVE=1 PLAYWRIGHT_JSON_OUTPUT_NAME=<ignored runtime path> npm --prefix frontend test -- --reporter=list,json` PASS: **61 passed, 0 failed, 0 skipped, 0 flaky**, approximately 92 seconds. 57 fixture/layout checks and 4 actual Compose browser checks.
+- Earlier production-served full acceptance passed 60 cases before the additional safety-ordering regression. Earlier FE08 fixture-only full suite passed 55 active / 1 live omitted; all live cases are enabled in the final run above.
+- `python3 scripts/smoke-test.py` PASS on actual Compose Database/S3/FTP, as detailed in P1. No full backend unit/HA/10x campaign is claimed.
+- `git diff --check` PASS; tracked changes restricted to frontend/ and the two owned frontend documents. develop stays at f5b2580a4a669a27d90ad91a2f1af2e199df018b; no merge/push.
+
+Intermediate issues and resolutions: initial template extraction assigned category to WorkspaceStore instead of UploadController; compiler caught it and binding was corrected before successful build. The first populated-layout test had a strict text-selector timeout; changed to exact accessible name, then it exposed the real unbroken-heading overflow fixed above. The first Compose ML test read the incident select before Angular finished updating its value, making an empty ID match all cards; it now explicitly waits for a nonempty selection. Final live and full suites pass. These failed checks are not counted as successful runs.
+
+Manual review: inspected actual desktop dashboard and mobile connection/incident captures, not just fixtures. Generated only fictitious storm incidents with the existing demo-data script; the capture session observed NORMAL then STORM snapshots and reported no browser page errors. Screenshots, JSON reports, logs, credentials and the local capture helper remain ignored under .runtime/. The ML worker is unpaused and the stack remains running. frontend/README.md documents local accounts, replayable checks, manual workflows, source layout and the startup readiness limitation.
+
+Frontend stages are complete within the existing API. Historical-day statistics, global cluster exploration and automatic business alerts remain backend-contract dependencies. No synthetic measurements or global group identifiers were invented. The user can test the running UI at https://localhost:8443 using local .runtime/accounts.txt credentials. No further implementation is required in this authorized scope.

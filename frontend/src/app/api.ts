@@ -41,6 +41,7 @@ export interface Incident {
   eventType: string;
   severity: number;
   affectedCustomers: number;
+  safetyCritical?: boolean;
   mlStatus: string;
   analysis: Analysis | null;
   attachments: FileRecord[];

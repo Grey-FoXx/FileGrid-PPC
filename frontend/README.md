@@ -35,10 +35,10 @@ Pentru development cu API nativ la `localhost:8080`: `npm start`, apoi http://lo
 Test browser live pe stack-ul Compose (din frontend/):
 
 ```bash
-FILEGRID_BASE_URL=https://localhost:8443 FILEGRID_LIVE=1 npm test -- e2e/live.spec.ts
+FILEGRID_BASE_URL=https://localhost:8443 FILEGRID_LIVE=1 FILEGRID_COMPOSE_LIVE=1 npm test -- e2e/live.spec.ts e2e/live-acceptance.spec.ts
 ```
 
-Acesta creează exclusiv documente și incidente fictive în baza locală.
+Aceste teste creează exclusiv documente și incidente fictive în baza locală. Testul de independență ML suspendă temporar worker-ul local și îl repornește în `finally`; sunt necesare Docker și stack-ul Compose local. Pentru acceptanța completă, elimină lista de fișiere de la finalul comenzii: aceeași suită verifică și build-ul servit cu fixtures API.
 
 La verificarea Compose din această sesiune, serviciile au pornit și smoke-test-ul a trecut, dar `scripts/start.sh` a raportat timeout la readiness: în gateway, `localhost` se rezolvă la `::1`, iar Nginx ascultă IPv4. Verificarea pe `https://127.0.0.1:8443/` reușește. Dacă întâlnești același timeout, verifică `docker compose ps` și adresa din browser înainte de a concluziona că stack-ul nu a pornit. Corecția scriptului/configurației este în ownership backend și nu a fost inclusă aici.
 
@@ -51,6 +51,24 @@ La verificarea Compose din această sesiune, serviciile au pornit și smoke-test
 5. `field`: fișiere/avarii proprii, fără metrici sau citiri administrative. `connection`: documente proprii; nu are formular sau navigare de avarii. Autorizarea efectivă rămâne pe server.
 6. Folosește numai tastatura: Tab pentru „Sari la conținut”, navigare, formulare, detalii (Escape închide și întoarce focusul), progres și anulare.
 7. În DevTools verifică 320/390/768/1440 px și zoom 200%. Tabelele au scroll local și acces din tastatură.
+
+Pentru un exemplu Storm Mode cu date reale sintetice, din rădăcina repository-ului:
+
+```bash
+python3 scripts/demo-data.py --count 22
+```
+
+Modul se calculează pe fereastra ultimelor 5 minute; ulterior poate reveni automat la Normal. Referințele de upload rămân locale browserului, iar datele generate pentru demo rămân în volumele locale.
+
+## Organizarea frontend-ului
+
+- `src/app/app.ts` și `app.html`: un singur shell, autentificare și navigare.
+- `src/app/workspace.ts`: state comun, roluri, refresh, paginare și interpretarea metricilor.
+- `src/app/pages/`: șase pagini standalone care folosesc aceeași instanță de state.
+- `src/app/upload.ts`: worker, idempotency, sesiuni, retry, pauză/reluare/anulare.
+- `src/app/download.ts`: streaming, progres, anulare și verificarea bytes/SHA-256.
+- `src/app/api.ts`: singurul client HTTP, cu credențiale exclusiv în memorie.
+- `src/app/section-state.ts`: stări comune de loading/error/stale/retry.
 
 ## Limite explicite
 

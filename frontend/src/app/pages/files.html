@@ -1,0 +1,138 @@
+<section class="page-heading">
+          <div>
+            <span class="eyebrow">CATALOG VERIFICABIL</span>
+            <h1 tabindex="-1">Fișierele rețelei.</h1>
+            <p>{{ vm.fileTotal() }} fișiere accesibile contului tău.</p>
+          </div>
+          <button class="primary" (click)="vm.go('upload')">
+            + Încarcă fișier
+          </button>
+        </section>
+        <section class="panel">
+          <filegrid-section-state [state]="vm.states()['files']" label="fișierele" (retry)="vm.refresh()" />
+          <div class="filters">
+            <input
+              aria-label="Caută după nume"
+              placeholder="Caută după numele fișierului…"
+              [(ngModel)]="vm.search"
+              (keyup.enter)="vm.filter()"
+            /><select
+              aria-label="Filtru categorie"
+              [(ngModel)]="vm.categoryFilter"
+              (change)="vm.filter()"
+            >
+              <option value="">Toate categoriile</option>
+              @for (c of vm.fileCategories(); track c) {
+                <option [value]="c">{{ vm.labels[c] }}</option>
+              }</select
+            ><select aria-label="Filtru stare" [(ngModel)]="vm.statusFilter" (change)="vm.filter()">
+              <option value="">Toate stările</option>
+              @for (status of ['CREATED','UPLOADING','UPLOADED','VERIFYING','AVAILABLE','RETRY_PENDING','FAILED','CANCELLED','CORRUPTED']; track status) {
+                <option [value]="status">{{ status }}</option>
+              }
+            </select><button class="secondary" (click)="vm.filter()">Caută</button>
+          </div>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Tabel de date">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fișier</th>
+                  <th>Categorie</th>
+                  <th>Destinație</th>
+                  <th>Dimensiune</th>
+                  <th>Stare</th>
+                  <th>Acțiuni</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (f of vm.files(); track f.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ f.filename }}</strong
+                      ><small>{{ f.createdAt | date: "dd MMM, HH:mm" }}</small>
+                    </td>
+                    <td>{{ vm.labels[f.category] }}</td>
+                    <td>
+                      <span
+                        class="storage"
+                        [class.database]="f.storage === 'DATABASE'"
+                        [class.s3]="f.storage === 'S3'"
+                        >{{ f.storage }}</span
+                      >
+                    </td>
+                    <td>{{ vm.bytes(f.sizeBytes) }}</td>
+                    <td>
+                      <span
+                        class="badge"
+                        [class.teal]="f.status === 'AVAILABLE'"
+                        [class.bad]="['FAILED', 'CORRUPTED'].includes(f.status)"
+                        >{{ f.status }}</span
+                      >
+                    </td>
+                    <td class="row-actions">
+                      <button class="text-button" (click)="vm.openDetails(f, $event)">
+                        Detalii</button
+                      ><button
+                        class="text-button"
+                        [disabled]="f.status !== 'AVAILABLE' || vm.downloads.busy() || !vm.downloads.allowed(f)" [attr.aria-describedby]="!vm.downloads.allowed(f) ? 'download-capability' : null"
+                        (click)="vm.download(f)"
+                      >
+                        ↓ Descarcă
+                      </button>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="6" class="empty">
+                      @if (vm.states()['files']?.loading) { Se încarcă fișierele… }
+                      @else if (vm.states()['files']?.error) { Fișierele sunt indisponibile momentan. }
+                      @else { Nu există fișiere pentru această selecție. Încarcă primul fișier sau schimbă filtrul. }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <button
+              class="secondary"
+              [disabled]="vm.filePage() === 0"
+              (click)="vm.nextPage(-1)"
+            >
+              ← Înapoi</button
+            ><span>Pagina {{ vm.filePage() + 1 }}</span
+            ><button
+              class="secondary"
+              [disabled]="(vm.filePage() + 1) * 25 >= vm.fileTotal()"
+              (click)="vm.nextPage(1)"
+            >
+              Înainte →
+            </button>
+          </div>
+        </section>
+        @if (vm.selectedFile(); as f) {
+          <section class="panel details" aria-labelledby="file-details-heading" (keydown.escape)="vm.closeDetails()">
+            <div class="panel-heading">
+              <h2 id="file-details-heading" tabindex="-1">{{ f.filename }}</h2>
+              <button
+                class="icon-button"
+                (click)="vm.closeDetails()"
+                aria-label="Închide detalii"
+              >
+                ×
+              </button>
+            </div>
+            <dl>
+              <dt>ID</dt>
+              <dd>{{ f.id }}</dd>
+              <dt>Decizie routing</dt>
+              <dd>{{ f.routingReason }}</dd>
+              <dt>Politică</dt>
+              <dd>v{{ f.policyVersion }}</dd>
+              <dt>Integritate</dt>
+              <dd>{{ f.integrityStatus }}</dd>
+              <dt>SHA-256</dt>
+              <dd class="mono">{{ f.sha256 }}</dd>
+            </dl>
+          </section>
+        }

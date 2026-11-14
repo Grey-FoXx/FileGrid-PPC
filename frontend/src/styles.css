@@ -1414,3 +1414,15 @@ td small,
     padding: 13px;
   }
 }
+
+/* Unbroken names must wrap outside horizontally scrollable data tables. */
+.panel-heading h2,
+.download-progress > strong {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.sidebar {
+  max-height: 100dvh;
+  overflow-y: auto;
+}

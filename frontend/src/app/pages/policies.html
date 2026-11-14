@@ -1,0 +1,23 @@
+<section class="page-heading">
+          <div>
+            <span class="eyebrow">ROUTING EXPLICABIL</span>
+            <h1 tabindex="-1">Politici de stocare.</h1>
+            <p>Reguli deterministe, configurabile fără modificarea codului.</p>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>Configurația activă</h2>
+          <filegrid-section-state [state]="vm.states()['policies']" label="politicile" (retry)="vm.refresh()" />
+          <ul class="zone-list">@for (rule of vm.policyRules(); track $index) {
+            <li><span><strong>{{ rule.id || 'Regulă' }}</strong> · {{ vm.labels[rule.category || ''] || rule.category }} {{ rule.attachmentType || '' }} {{ rule.sensitivity || '' }}</span><span>{{ rule.storage }}</span></li>
+          }</ul>
+          <p>
+            Regulile active explică destinația fiecărei categorii.
+            Actualizările politicii se aplică transferurilor noi; sesiunile existente își păstrează destinația.
+          </p>
+          <details><summary>Vezi configurația activă</summary><pre>{{ vm.policies() | json }}</pre></details>
+          <p class="callout">
+            Constrângeri ferme: contoare → Database; racordare criptată → S3
+            privat; drone → S3 multipart; FTP → diagnostice legacy nesensibile.
+          </p>
+        </section>

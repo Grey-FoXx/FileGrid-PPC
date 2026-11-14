@@ -1,0 +1,176 @@
+<section class="page-heading">
+          <div>
+            <span class="eyebrow">CONTROL ȘI VIZIBILITATE</span>
+            <h1 tabindex="-1">Rețeaua, în perspectivă.</h1>
+            <p>Monitorizează fluxurile de date și incidentele din teren.</p>
+          </div>
+          <button class="primary" (click)="vm.go('upload')">
+            + Încarcă fișier
+          </button>
+        </section>
+        <filegrid-section-state [state]="vm.states()['business']" label="statisticile de business" (retry)="vm.refresh()" />
+        <div class="stat-grid">
+          <article class="stat">
+            <span>Fișiere înregistrate</span
+            ><strong>{{ vm.business()?.files ?? "—" }}</strong
+            ><small>Toate categoriile</small>
+          </article>
+          <article class="stat">
+            <span>Citiri de contoare</span
+            ><strong>{{ vm.business()?.readings ?? "—" }}</strong
+            ><small>Identități unice, fără duplicări</small>
+          </article>
+          <article class="stat">
+            <span>Incidente raportate</span
+            ><strong>{{ vm.business()?.incidents ?? "—" }}</strong
+            ><small
+              >{{ vm.business()?.recentIncidents ?? 0 }} în ultimele 5
+              minute</small
+            >
+          </article>
+          <article class="stat mode">
+            <span>Mod operațional</span
+            ><strong [class.orange]="vm.business()?.mode === 'STORM'">{{
+              vm.business()?.mode ?? "—"
+            }}</strong
+            ><small>Mod stabilit de server din volumul recent</small>
+          </article>
+        </div>
+        <div class="dashboard-columns">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow">TRASEUL DATELOR</span>
+                <h2>Patru surse. Un punct de intrare.</h2>
+              </div>
+              <span class="badge teal">POLICY ROUTING</span>
+            </div>
+            <div class="route-list">
+              <div>
+                <span class="route-icon">⌁</span>
+                <div>
+                  <strong>Citiri contoare</strong
+                  ><small>Ingestie automată · idempotency</small>
+                </div>
+                <span class="storage database">Database</span>
+              </div>
+              <div>
+                <span class="route-icon">ϟ</span>
+                <div>
+                  <strong>Înregistrări de avarie</strong
+                  ><small>Acces rapid · analiză asincronă</small>
+                </div>
+                <span class="storage s3">S3 / FTP</span>
+              </div>
+              <div>
+                <span class="route-icon">▤</span>
+                <div>
+                  <strong>Documente de racordare</strong
+                  ><small>AES-256-GCM · acces privat</small>
+                </div>
+                <span class="storage s3">S3 privat</span>
+              </div>
+              <div>
+                <span class="route-icon">↗</span>
+                <div>
+                  <strong>Inspecții cu drona</strong
+                  ><small>Multipart · reluare transfer</small>
+                </div>
+                <span class="storage s3">S3</span>
+              </div>
+            </div>
+          </section>
+          <section class="panel intelligence">
+            <span class="eyebrow">STORM INTELLIGENCE</span>
+            <h2>Context pentru<br />decizii mai clare.</h2>
+            <p>
+              Prioritizare și corelare a incidentelor. Două modele specializate,
+              recomandări explicabile.
+            </p>
+            <div class="model-tags">
+              <span>Random Forest</span><span>DBSCAN</span>
+            </div>
+            <button class="text-button" (click)="vm.go('incidents')">
+              Deschide dispeceratul →</button
+            ><small
+              >Date sintetice · suport decizional, fără control automat al
+              rețelei.</small
+            >
+          </section>
+        </div>
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">PERFORMANȚĂ MĂSURATĂ</span>
+              <h2>Transferuri și latență</h2>
+            </div>
+            <small>Fereastră: {{ vm.windowMinutes() === null ? 'nespecificată' : vm.windowMinutes() + ' minute' }} · valori măsurate</small>
+          </div>
+          <filegrid-section-state [state]="vm.states()['technical']" label="metricile tehnice" (retry)="vm.refresh()" />
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Metrici pe categorie și storage">
+            <table>
+              <thead>
+                <tr>
+                  <th>Categorie / operație</th>
+                  <th>Storage</th>
+                  <th>Operații</th>
+                  <th>Transfer / secundă</th>
+                  <th>Operații / secundă</th>
+                  <th>p50</th>
+                  <th>p95</th>
+                  <th>p99</th>
+                  <th>Erori</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (s of vm.series(); track $index) {
+                  <tr>
+                    <td>
+                      {{ vm.labels[s.category] }}<small>{{ s.operation }}</small>
+                    </td>
+                    <td>{{ s.storage }}</td>
+                    <td>{{ s.operations }}</td>
+                    <td>{{ vm.bytes(s.bytesPerSecond) }}/s</td>
+                    <td>{{ s.operationsPerSecond | number: "1.0-6" }}</td>
+                    <td>{{ s.p50Ms | number: "1.0-1" }} ms</td>
+                    <td>{{ s.p95Ms | number: "1.0-1" }} ms</td>
+                    <td>{{ s.p99Ms | number: "1.0-1" }} ms</td>
+                    <td>{{ s.errorRate * 100 | number: "1.0-1" }}%</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="9" class="empty">
+                      @if (vm.states()['technical']?.loading) { Se încarcă metricile… }
+                      @else if (vm.states()['technical']?.error) { Metricile sunt indisponibile momentan. }
+                      @else { Metricile apar după primele operații. Nu sunt generate valori demonstrative. }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel" aria-label="Avarii pe zone">
+          <h2>Zone cu avarii</h2>
+          <p>Total înregistrat, independent de pagina de incidente deschisă.</p>
+          <ul class="zone-list">
+            @for (zoneRow of vm.business()?.zones || []; track zoneRow.zone) {
+              <li><strong>{{ zoneRow.zone }}</strong><span>{{ zoneRow.incidents }} incidente</span></li>
+            } @empty { <li>{{ vm.states()['business']?.error ? 'Date indisponibile.' : 'Nu există date pe zone.' }}</li> }
+          </ul>
+        </section>
+        <section class="panel" aria-label="Comparație normal și furtună">
+          <h2>Normal / Storm: instantanee observate</h2>
+          <p>Salvează valorile curente în fiecare mod. Instantaneele sunt păstrate doar în această sesiune; ferestrele pot fi suprapuse. Nu reprezintă o comparație istorică pe zile.</p>
+          <button class="secondary" (click)="vm.captureSnapshot()" [disabled]="!vm.business() || vm.states()['technical']?.loading || !!vm.states()['technical']?.error || vm.states()['business']?.loading || !!vm.states()['business']?.error">Salvează instantaneul {{ vm.business()?.mode || 'curent' }}</button>
+          <p>NORMAL: {{ vm.snapshots()['NORMAL'] ? (vm.snapshots()['NORMAL'].at | date:'HH:mm:ss') : 'necapturat' }} (fereastră {{ vm.snapshots()['NORMAL']?.window ?? '—' }} min) · STORM: {{ vm.snapshots()['STORM'] ? (vm.snapshots()['STORM'].at | date:'HH:mm:ss') : 'necapturat' }} (fereastră {{ vm.snapshots()['STORM']?.window ?? '—' }} min)</p>
+          @if (vm.snapshots()['NORMAL'] && vm.snapshots()['STORM']) {
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Instantanee de performanță">
+              <table><thead><tr><th>Categorie / storage / operație</th><th>p95 NORMAL</th><th>p95 STORM</th><th>B/s NORMAL</th><th>B/s STORM</th><th>Erori NORMAL</th><th>Erori STORM</th></tr></thead>
+                <tbody>@for (row of vm.comparisonRows(); track row.key) {
+                  <tr><td>{{ row.key }}</td><td>{{ row.normal ? (row.normal.p95Ms | number:'1.0-1') + ' ms' : '—' }}</td><td>{{ row.storm ? (row.storm.p95Ms | number:'1.0-1') + ' ms' : '—' }}</td><td>{{ row.normal ? vm.bytes(row.normal.bytesPerSecond) + '/s' : '—' }}</td><td>{{ row.storm ? vm.bytes(row.storm.bytesPerSecond) + '/s' : '—' }}</td><td>{{ row.normal ? (row.normal.errorRate * 100 | number:'1.0-1') + '%' : '—' }}</td><td>{{ row.storm ? (row.storm.errorRate * 100 | number:'1.0-1') + '%' : '—' }}</td></tr>
+                } @empty { <tr><td colspan="7">Instantaneele nu conțin operații măsurate.</td></tr> }</tbody>
+              </table>
+            </div>
+          }
+        </section>

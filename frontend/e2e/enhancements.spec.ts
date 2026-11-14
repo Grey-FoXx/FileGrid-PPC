@@ -384,3 +384,31 @@ test("large download is disabled before any content request when streaming is un
   await expect(page.locator("#download-capability")).toContainText("până la 128 MiB");
   expect(contentRequests).toBe(0);
 });
+
+test("small positive measured rates remain readable and do not round to zero", async ({ page }) => {
+  await page.route("**/api/v1/stats/technical", route => route.fulfill({ json: {
+    windowMinutes: 60, series: [{ category: "INCIDENT", storage: "S3", operation: "download",
+      operations: 1, bytesPerSecond: 60.3211111111, operationsPerSecond: 1 / 3600,
+      p50Ms: 2, p95Ms: 2, p99Ms: 2, errorRate: 0 }],
+  } }));
+  await signIn(page);
+  await expect(page.getByRole("cell", { name: "60.32 B/s", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "0.000278", exact: true })).toBeVisible();
+});
+
+test("storm priority keeps safety reports and immediate human review ahead of numerical scores", async ({ page }) => {
+  const analysis = { priorityScore: 99, priorityClass: "CRITICAL", clusterId: 0, clusterSize: 2,
+    recommendation: "HIGH_PRIORITY_REVIEW", reasons: [], synthetic: true, modelVersions: {} };
+  const ordinary = { ...incident(1, "COMPLETED", analysis), stationId: "HIGH-SCORE" };
+  const immediate = { ...incident(2, "COMPLETED", { ...analysis, priorityScore: 25, recommendation: "IMMEDIATE_HUMAN_REVIEW" }), stationId: "IMMEDIATE" };
+  const reported = { ...incident(3, "PENDING"), severity: 1, safetyCritical: true, stationId: "SAFETY-REPORT" };
+  await page.route("**/api/v1/incidents?**", route => route.fulfill({ json: pageOf([ordinary, immediate, reported]) }));
+  await page.route("**/api/v1/stats/business", route => route.fulfill({ json: { files: 3, readings: 0, incidents: 30, recentIncidents: 30, mode: "STORM", zones: [] } }));
+  await signIn(page);
+  await page.locator("nav button").filter({ hasText: "Dispecerat" }).click();
+  const cards = page.locator(".incident-card");
+  await expect(cards.nth(0)).toContainText("IMMEDIATE");
+  await expect(cards.nth(1)).toContainText("SAFETY-REPORT");
+  await expect(cards.nth(1)).toContainText("CRITIC DE SIGURANȚĂ");
+  await expect(cards.nth(2)).toContainText("HIGH-SCORE");
+});

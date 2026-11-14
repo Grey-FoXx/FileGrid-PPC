@@ -1,4 +1,4 @@
-# FRONTEND tasks — checkpoint
+# FRONTEND tasks — delivery
 
 Owner: frontend/, docs/FRONTEND_TASKS.md, docs/PROGRESS_FRONTEND.md. Do not change contracts/ or infrastructure unilaterally. Current authorization: user approved all remaining frontend stages (P1/P2) on feature/frontend-improvements; backend/contracts/infrastructure ownership remains unchanged.
 
@@ -7,12 +7,12 @@ Owner: frontend/, docs/FRONTEND_TASKS.md, docs/PROGRESS_FRONTEND.md. Do not chan
 | FE-P0-AUTH | Isolate credentials, 401/403/network failures and concurrent refresh | Existing API | Current-account-only updates; independent section refresh; latest query wins; browser regressions | VERIFIED_FIXTURES |
 | FE01 | Angular shell/authentication | M0 contract | Desktop/mobile auth workflows and production build | VERIFIED |
 | FE02 | Upload, list/search and download | FE01 | Live encrypted-document and FTP upload, verified download | VERIFIED_NATIVE |
-| FE03 | Hash worker/progress/resume | FE02 | Worker hash and persisted-session path implemented; restart covered at API level | IMPLEMENTED |
-| FE04 | Dispatcher and independent ML state | M2 API | Live two-model results, pending/available separation | VERIFIED_NATIVE |
+| FE03 | Hash worker/progress/resume | FE02 | Browser reload after confirmed 8 MiB part, same bytes recovered, no first-part retransmission | VERIFIED_COMPOSE |
+| FE04 | Dispatcher and independent ML state | M2 API | Actual worker pause: AVAILABLE download verified with ML PENDING; resume yields COMPLETED and both models | VERIFIED_COMPOSE |
 | FE05 | Baseline browser tests | FE02 | 3 fixtures tests + 1 live test pass | VERIFIED |
 | FE06 | Keyboard/focus/progress accessibility and responsive layout | Existing UI | Skip link, focus return, validation, named progress and 320/390/768/1440 fixtures | VERIFIED_FIXTURES |
 | FE07 | Robust transfer lifecycle, persisted idempotency, pause/resume/cancel and context recovery | Existing contract; FE-P0-AUTH | Worker/backoff/polling stop; multipart reload resume; terminal-session recovery; cancel reconciliation; account isolation; 26 fixture regressions | VERIFIED_FIXTURES |
-| FE08 | Split large component by existing pages/services | FE05 | Preserve one shell/client and all current workflows | TODO_INDEPENDENT |
+| FE08 | Six standalone pages, shared workspace state and transfer controllers | FE05/P1 | One shell and API instance; upload lifecycle isolated; complete production-browser suite preserved | VERIFIED_COMPOSE_AND_FIXTURES |
 | FE09 | Technical/business metrics and independent async states | Existing stats endpoints | B/s, operations/s, quantiles, errors, server window and zones; loading/empty/stale/error/retry | VERIFIED_FIXTURES |
 | FE10 | Role-specific UX regression suite | Existing roles and fixtures | Four human roles request only permitted endpoints; denied/errors covered | VERIFIED_FIXTURES |
 | FE11 | Normal/storm observed-session comparison and model explanation | Existing mode/metrics/analysis | Observed snapshots, separate model/decision panels and local-only cluster labels; historical days/global groups/alerts need BE contract | FRONTEND_AVAILABLE_API_COMPLETE; HISTORY_WAIT_BACKEND |
@@ -22,3 +22,8 @@ P0 delivery on feature/frontend-improvements: FE-P0-AUTH and FE07 completed loca
 
 
 P1 completed after explicit continuation approval. Added download progress/cancellation/integrity guards, incident and meter pagination/filters, separate model outputs and decision metadata. Build and 54 active browser fixtures pass (1 live test omitted); real Compose smoke passes. FE08 modularization is next. Historical comparisons, global incident clusters and business alerts require coordinated backend contracts and are not fabricated in UI.
+
+
+Final authorized delivery (2026-11-14): P0/P1/P2 frontend implementation complete against the existing API. Production build passes; all **61 browser tests pass with zero skipped/flaky/failed**, comprising 57 fixture/layout regressions and 4 actual Compose browser workflows. FE06/FE09/FE10 are covered by the complete production-served suite; FE07 includes actual 8 MiB + 19 byte multipart pause/reload/recovery. Services remain running at https://localhost:8443 for user testing. No backend, contract, infrastructure or develop changes were made.
+
+Remaining backend dependencies: historical normal/day-versus-storm queries, global incident-group identifiers and business-alert delivery. FE11 uses explicitly labelled observed-session snapshots and analysis-local cluster labels. Existing startup script readiness resolves localhost to IPv6 inside gateway while Nginx serves IPv4; its timeout is documented in frontend/README.md, without claiming the script passed.
