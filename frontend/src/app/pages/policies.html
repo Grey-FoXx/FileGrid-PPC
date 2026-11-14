@@ -1,104 +1,23 @@
 <section class="page-heading">
-  <div>
-    <span class="eyebrow">ROUTING EXPLICABIL</span>
-    <h1 tabindex="-1">Politici de stocare.</h1>
-    <p>Urmărește ordinea regulilor active, destinațiile permise și metricile măsurate.</p>
-  </div>
-  <span class="badge teal">POLICY v{{ policyVersion }}</span>
-</section>
-
-<label>Explorează categoria<select [(ngModel)]="category" aria-label="Categorie explorată">@for (categoryKey of ['METER_READING','INCIDENT','CONNECTION_DOCUMENT','DRONE_VIDEO']; track categoryKey) { <option [value]="categoryKey">{{ vm.labels[categoryKey] }}</option> }</select></label>
-<filegrid-section-state [state]="vm.states()['policies']" label="politicile" (retry)="vm.refresh()" />
-<nav class="view-tabs" aria-label="Mod de explorare a politicilor">
-  <button type="button" [class.active]="view === 'explore'" [attr.aria-pressed]="view === 'explore'" (click)="view = 'explore'">Explorează configurația activă</button>
-  <button type="button" [class.active]="view === 'simulate'" [attr.aria-pressed]="view === 'simulate'" (click)="view = 'simulate'">Simulează un caz ipotetic</button>
-</nav>
-@if (view === 'explore') {
-<div class="lab-grid">
-  <section class="panel" aria-labelledby="active-policy-title">
-    <div class="panel-heading">
-      <div><span class="eyebrow">CONFIGURAȚIA PRIMITĂ DE API</span><h2 id="active-policy-title">Reguli active, în ordinea evaluării</h2></div>
-      <span class="badge">v{{ policyVersion }}</span>
-    </div>
-    @if (policyRules.length) {
-      <ol class="rule-list">
-        @for (rule of policyRules; track $index) {
-          <li class="rule-step" [class.is-match]="decision.orderedRules[$index]?.selected" [class.is-skipped]="!decision.orderedRules[$index]?.selected">
-            <span class="step-number">{{ $index + 1 }}</span>
-            <span><strong>{{ rule.id || 'Regulă' }}</strong><p>{{ vm.labels[rule.category || ''] || rule.category || 'Categorie neprecizată' }}{{ rule.attachmentType ? ' · ' + rule.attachmentType : '' }}{{ rule.sensitivity ? ' · ' + rule.sensitivity : '' }}</p><small>{{ decision.orderedRules[$index]?.selected ? 'Prima potrivire selectată' : decision.orderedRules[$index]?.matches ? 'Potrivire ulterioară, ignorată după prima regulă' : 'Nu se potrivește cu selecția' }}</small></span>
-            <span class="storage-chip">{{ storageLabel(rule.storage) }}</span>
-          </li>
-        }
-      </ol>
-    } @else {
-      <p class="empty">Nu există reguli active în răspunsul API.</p>
-    }
-    <p class="muted">Se folosește prima regulă potrivită. Transferurile noi citesc configurația activă; sesiunile existente își păstrează versiunea și destinația.</p>
-    <details><summary>Vezi configurația activă</summary><pre>{{ vm.policies() | json }}</pre></details>
-  </section>
-
-  <section class="panel" aria-labelledby="routing-result-title">
-    <span class="eyebrow">DESTINAȚIA PENTRU SELECȚIA CURENTĂ</span>
-    <div class="decision-flow" aria-label="Fluxul deciziei de stocare">
-      <div class="flow-step"><span class="step-number">1</span><strong>{{ vm.labels[category] }}</strong><small>{{ attachmentType }} · {{ sensitivity }}</small></div>
-      <div class="flow-step"><span class="step-number">2</span><strong>{{ decision.matchedRule?.id || 'Constrângere de categorie' }}</strong><small>{{ decision.ruleReason }}</small></div>
-      <div class="destination-card"><span class="step-number">3</span><span class="eyebrow">DESTINAȚIE</span><h3 id="routing-result-title">{{ storageLabel(decision.destination) }}</h3>@if (decision.destination) { <span class="technology-chip">{{ decision.destination }}</span> }</div>
-    </div>
-    <p class="callout"><strong>Destinații permise prin constrângerea FileGrid, independent de YAML:</strong> {{ allowedStorageLabels }}. {{ decision.constraintReason }}</p>
-    <p class="muted">{{ decision.transferProtocol }}</p>
-  </section>
-</div>
-
-<section class="panel" aria-labelledby="metrics-title">
-  <div class="panel-heading"><div><span class="eyebrow">OBSERVAȚII DIN API</span><h2 id="metrics-title">Metrici măsurate pentru categorie și storage</h2></div><small>Fereastră API: {{ vm.windowMinutes() === null ? 'neprecizată' : vm.windowMinutes() + ' min' }}</small></div>
-  @if (hasMetrics) {
-    <div class="metric-grid">
-      @for (metric of categoryMetrics; track $index) {
-        <article class="metric-card"><strong>{{ storageLabel(metric.storage) }}</strong><small>{{ metric.operation }} · {{ metric.operations }} operații</small><div class="metric-list">
-          <span>p50 <b>{{ metric.p50Ms === null || metric.p50Ms === undefined ? 'Not measured' : (metric.p50Ms | number:'1.0-1') + ' ms' }}</b></span>
-          <span>p95 <b>{{ metric.p95Ms === null || metric.p95Ms === undefined ? 'Not measured' : (metric.p95Ms | number:'1.0-1') + ' ms' }}</b></span>
-          <span>p99 <b>{{ metric.p99Ms === null || metric.p99Ms === undefined ? 'Not measured' : (metric.p99Ms | number:'1.0-1') + ' ms' }}</b></span>
-          <span>Throughput <b>{{ metric.bytesPerSecond === null || metric.bytesPerSecond === undefined ? 'Not measured' : vm.bytes(metric.bytesPerSecond) + '/s' }}</b></span>
-          <span>Operații <b>{{ metric.operationsPerSecond === null || metric.operationsPerSecond === undefined ? 'Not measured' : (metric.operationsPerSecond | number:'1.0-6') + '/s' }}</b></span>
-          <span>Erori <b>{{ metric.errorRate === null || metric.errorRate === undefined ? 'Not measured' : (metric.errorRate * 100 | number:'1.0-1') + '%' }}</b></span>
-        </div></article>
-      }
-    </div>
-  } @else {
-    <p class="empty">Nu există metrici măsurate pentru categoria {{ vm.labels[category] }} în fereastra curentă. Valorile lipsă sunt afișate ca „Not measured”; nu sunt estimate.</p>
-  }
-  <p class="muted">Metricile descriu operațiile observate. Nu există aici un benchmark comparabil între destinații și nu se afirmă că una este „cea mai bună”.</p>
-</section>
-
-<section class="panel"><h2>Alternative tehnologice</h2><div class="decision-flow">@for (target of targets; track target) { <article class="flow-step"><strong>{{ storageLabel(target) }}</strong><p>{{ decision.allowedDestinations.includes(target) ? 'Permis de constrângerile categoriei; selecția depinde de regula activă.' : 'Respins de constrângerile categoriei pentru selecția curentă.' }}</p><small>{{ measuredStorage(target) ? 'Există observații API pentru această categorie/storage, detaliate mai sus.' : 'Not measured' }}</small></article> }</div><p>Observațiile nu constituie un benchmark comparabil. Costuri și clasament de performanță: indisponibile în API.</p></section>
-<section class="panel" aria-labelledby="actual-record-title">
-  <span class="eyebrow">EVIDENȚĂ DIN CATALOG</span><h2 id="actual-record-title">Un fișier disponibil pentru categoria selectată</h2>
-  @if (actualExample; as file) {
-    <article class="actual-record"><strong>{{ file.filename }}</strong><code>{{ file.id }}</code><span>{{ file.status }} · {{ formatBytes(file.sizeBytes) }} · {{ storageLabel(file.storage) }}</span><span>Policy v{{ file.policyVersion }} · {{ file.routingReason }}</span></article>
-  } @else {
-    <p class="empty">Nu există un fișier AVAILABLE din categoria aceasta în pagina de catalog încărcată acum.</p>
-  }
-</section>
-}
-@if (view === 'simulate') {
-<section class="panel" aria-labelledby="playground-title">
-  <div class="panel-heading"><div><span class="eyebrow">PLAYGROUND LOCAL</span><h2 id="playground-title">Explorează un caz ipotetic</h2></div><span class="badge bad">SIMULARE · FĂRĂ EFECTE ÎN API</span></div>
-  <p class="simulated">Parametrii și destinația de mai jos există numai în această pagină. Nu creează sesiuni, nu schimbă configurația activă și nu rescrie fișiere.</p>
-  <div class="simulation-form">
-    <label>Categorie<select [(ngModel)]="category"><option value="METER_READING">Citiri contoare</option><option value="INCIDENT">Avarii</option><option value="CONNECTION_DOCUMENT">Racordare</option><option value="DRONE_VIDEO">Inspecții dronă</option></select></label>
-    @if (category === 'INCIDENT') {
-      <label>Tip atașament<select [(ngModel)]="attachmentType"><option value="BINARY">Document / diagnostic</option><option value="LEGACY_LOG">Log legacy</option></select></label>
-      <label>Sensibilitate<select [(ngModel)]="sensitivity"><option value="SENSITIVE">Sensibil</option><option value="NON_SENSITIVE">Nesensibil</option></select></label>
-    }
-    <label>Dimensiune ipotetică (MiB)<input type="number" min="0.01" max="20480" step="0.01" [(ngModel)]="sizeMiB"></label>
-    <label>Destinație ipotetic propusă<select [(ngModel)]="hypotheticalTarget">@for (target of targets; track target) { <option [value]="target">{{ storageLabel(target) }}</option> }</select></label>
-  </div>
-  <div class="decision-flow">
-    <div class="flow-step"><span class="step-number">1</span><strong>{{ formatBytes(hypotheticalBytes) }}</strong><small>Dimensiunea nu este criteriu în regulile active încărcate.</small></div>
-    <div class="flow-step"><span class="step-number">2</span><strong>{{ decision.ruleReason }}</strong><small>Constrângeri independente de regulă: {{ allowedStorageLabels }}</small></div>
-    <div class="target-result" [class.is-invalid]="!decision.targetAccepted"><strong>Țintă permisă de constrângeri: {{ decision.targetAccepted ? storageLabel(hypotheticalTarget) : 'Nu' }}</strong><p>{{ hypotheticalTargetMessage }}</p></div>
-  </div>
-  <p class="muted">Protocolul de upload: {{ decision.transferProtocol }}</p>
-  <p class="callout">Pentru a modifica rutarea efectivă, editează config/storage-policies.yaml și repornește API-ul. Acest playground este doar o simulare locală.</p>
-</section>
-}
+          <div>
+            <span class="eyebrow">ROUTING EXPLICABIL</span>
+            <h1 tabindex="-1">Politici de stocare.</h1>
+            <p>Reguli deterministe, configurabile fără modificarea codului.</p>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>Configurația activă</h2>
+          <filegrid-section-state [state]="vm.states()['policies']" label="politicile" (retry)="vm.refresh()" />
+          <ul class="zone-list">@for (rule of vm.policyRules(); track $index) {
+            <li><span><strong>{{ rule.id || 'Regulă' }}</strong> · {{ vm.labels[rule.category || ''] || rule.category }} {{ rule.attachmentType || '' }} {{ rule.sensitivity || '' }}</span><span>{{ rule.storage }}</span></li>
+          }</ul>
+          <p>
+            Regulile active explică destinația fiecărei categorii.
+            Actualizările politicii se aplică transferurilor noi; sesiunile existente își păstrează destinația.
+          </p>
+          <details><summary>Vezi configurația activă</summary><pre>{{ vm.policies() | json }}</pre></details>
+          <p class="callout">
+            Constrângeri ferme: contoare → Database; racordare criptată → S3
+            privat; drone → S3 multipart; FTP → diagnostice legacy nesensibile.
+          </p>
+        </section>
