@@ -1426,3 +1426,18 @@ td small,
   max-height: 100dvh;
   overflow-y: auto;
 }
+/* Command Center: four primary destinations, existing tools stay within reach. */
+.command-navigation button { display:flex; align-items:center; gap:12px; text-align:left; }
+.workspace-tools nav { display:flex; gap:6px; flex-wrap:wrap; padding:12px 0; border-bottom:1px solid var(--line); }
+.workspace-tools button { border:0; border-radius:20px; background:transparent; color:#47645d; padding:8px 14px; font-size:12px; }
+.workspace-tools button.active { background:#dceee5; color:#125544; }
+filegrid-command-center, filegrid-policies { display:block; animation:workspace-arrive .3s ease-out; }
+@keyframes workspace-arrive { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+@media(max-width:900px) { .command-navigation button .command-label { display:none; } }
+@media(prefers-reduced-motion:reduce) { filegrid-command-center,filegrid-policies { animation:none; } }
+.preview-shell { max-width:1500px; margin:auto; padding:32px; }
+.preview-label,.source-divider { padding:14px 18px; background:#eef2dc; border:1px solid #dce3b9; border-radius:12px; color:#455422; font-size:12px; }
+.source-divider { background:#edf4f1; border-color:#d2e4db; color:#28624e; }
+.demo-entry { margin-top:12px; width:100%; }
+.panel { border-radius:16px; }
+@media(max-width:550px) { .preview-shell { padding:12px; } }

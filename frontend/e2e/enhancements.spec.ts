@@ -158,7 +158,7 @@ test("technical dashboard shows the measured window, throughput, operations, qua
   await expect(page.getByRole("cell", { name: "2.5", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "45.2 ms" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "12.5%" })).toBeVisible();
-  await expect(page.getByText("Dobrogea")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Avarii pe zone", exact: true }).getByText("Dobrogea", { exact: true })).toBeVisible();
   await expect(page.getByText("4 incidente", { exact: true })).toBeVisible();
 });
 

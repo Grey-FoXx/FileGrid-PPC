@@ -1,4 +1,10 @@
-@if (!vm.me()) {
+@if (demoPreview()) {
+  <main class="preview-shell"><button class="secondary" (click)="demoPreview.set(false)">← Înapoi la autentificare</button>
+    <p class="preview-label">DEMO SIMULATION · date sintetice locale · fără acces sau modificări la datele API</p>
+    <filegrid-command-center [demoOnly]="true" />
+    <filegrid-policies />
+  </main>
+} @else if (!vm.me()) {
   <main class="login-screen">
     <section class="login-brand">
       <div class="brand-mark">ϟ</div>
@@ -31,12 +37,13 @@
           autocomplete="current-password"
           required
       /></label>
+
       @if (vm.error()) {
         <p class="alert error" role="alert" tabindex="-1" data-error-summary>{{ vm.error() }}</p>
       }
       <button class="primary" [disabled]="vm.busy()">
         {{ vm.busy() ? "Se verifică…" : "Intră în platformă →" }}</button
-      ><small
+      ><button type="button" class="secondary demo-entry" (click)="demoPreview.set(true)">Deschide Demo simulation</button><small
         >Conturi locale: fișierul .runtime/accounts.txt<br />Prototip hackathon
         · date de test fictive</small
       >
@@ -57,21 +64,11 @@
         ><span>FileGrid<small>POWERED BY PPC</small></span></a
       >
       <div class="workspace-label">SPAȚIU DE LUCRU</div>
-      <nav aria-label="Navigare principală">
-        @for (item of vm.tabs; track item[0]) {
-          @if (
-            (vm.canStats() || !["dashboard", "meters"].includes(item[0])) &&
-            (item[0] !== "incidents" || vm.canIncidents())
-          ) {
-            <button [class.active]="vm.tab() === item[0]" [attr.aria-current]="vm.tab() === item[0] ? 'page' : null" [title]="item[2]" (click)="vm.go(item[0])">
-              <span>{{ item[1] }}</span
-              >{{ item[2] }}
-              @if (item[0] === "incidents" && vm.business()?.mode === "STORM") {
-                <i class="storm-dot"></i>
-              }
-            </button>
-          }
-        }
+      <nav aria-label="Navigare principală" class="command-navigation">
+        <button aria-label="Command Center" (click)="vm.go(vm.canStats() ? 'dashboard' : vm.canIncidents() ? 'incidents' : 'command')" [class.active]="['dashboard','incidents','command'].includes(vm.tab())"><span class="command-icon">◈</span> <span class="command-label">Command Center</span></button>
+        <button aria-label="Data Ingestion" (click)="vm.go('upload')" [class.active]="['upload','files','meters'].includes(vm.tab())"><span class="command-icon">↑</span> <span class="command-label">Data Ingestion</span></button>
+        <button aria-label="Storage Decision Lab" (click)="vm.go('policies')" [class.active]="vm.tab() === 'policies'"><span class="command-icon">⇄</span> <span class="command-label">Storage Decision Lab</span></button>
+        <button aria-label="System Health" (click)="vm.go('health')" [class.active]="vm.tab() === 'health'"><span class="command-icon">◉</span> <span class="command-label">System Health</span></button>
       </nav>
       <div class="sidebar-bottom">
         <div class="system-state">
@@ -108,6 +105,23 @@
           </button>
         </div>
       </header>
+      <div class="workspace-tools">      <nav aria-label="Instrumente FileGrid">
+        @for (item of vm.tabs; track item[0]) {
+          @if (
+            (vm.canStats() || !["dashboard", "meters"].includes(item[0])) &&
+            (item[0] !== "incidents" || vm.canIncidents())
+          ) {
+            <button [class.active]="vm.tab() === item[0]" [attr.aria-current]="vm.tab() === item[0] ? 'page' : null" [title]="item[2]" (click)="vm.go(item[0])">
+              <span>{{ item[1] }}</span
+              >{{ item[2] }}
+              @if (item[0] === "incidents" && vm.business()?.mode === "STORM") {
+                <i class="storm-dot"></i>
+              }
+            </button>
+          }
+        }
+      </nav>
+</div>
       @if (vm.error()) {
         <div class="alert error" role="alert" tabindex="-1" data-error-summary>
           {{ vm.error()
@@ -132,7 +146,12 @@
       @if (!vm.downloads.supportsStreaming()) {
         <p id="download-capability" class="footnote">Acest browser permite descărcări până la 128 MiB. Pentru fișiere mai mari folosește Chrome/Edge cu salvare streaming.</p>
       }
-      @if (vm.tab() === "dashboard") {
+      @if (['dashboard','incidents','command'].includes(vm.tab())) { <filegrid-command-center /> }
+      @if (['dashboard','incidents','command'].includes(vm.tab())) { <p class="source-divider">LIVE API · date și instrumente operaționale; simularea de mai sus nu modifică aceste informații.</p> }
+      @if (vm.tab() === "health" && !vm.canStats()) {
+        <section class="panel"><h1 tabindex="-1">System Health</h1><p>{{ vm.online() ? 'API accesibil la ultima actualizare' : 'Conexiune API indisponibilă' }}</p><p>Metricile tehnice necesită rol ADMIN sau DISPATCHER.</p><p>Pornirea pe mașină curată printr-o singură comandă: cerință eliminatorie încă nevalidată.</p></section>
+      }
+      @if (vm.tab() === "dashboard" || (vm.tab() === "health" && vm.canStats())) {
         <filegrid-dashboard />
       }
       @if (vm.tab() === "upload") {

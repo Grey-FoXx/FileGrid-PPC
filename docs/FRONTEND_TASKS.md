@@ -27,3 +27,20 @@ P1 completed after explicit continuation approval. Added download progress/cance
 Final authorized delivery (2026-11-14): P0/P1/P2 frontend implementation complete against the existing API. Production build passes; all **61 browser tests pass with zero skipped/flaky/failed**, comprising 57 fixture/layout regressions and 4 actual Compose browser workflows. FE06/FE09/FE10 are covered by the complete production-served suite; FE07 includes actual 8 MiB + 19 byte multipart pause/reload/recovery. Services remain running at https://localhost:8443 for user testing. No backend, contract, infrastructure or develop changes were made.
 
 Remaining backend dependencies: historical normal/day-versus-storm queries, global incident-group identifiers and business-alert delivery. FE11 uses explicitly labelled observed-session snapshots and analysis-local cluster labels. Existing startup script readiness resolves localhost to IPv6 inside gateway while Nginx serves IPv4; its timeout is documented in frontend/README.md, without claiming the script passed.
+
+
+## Demo Command Center — feature/demo-command-center
+
+Explicit user approval covers Command Center, synthetic scenarios and local Policy Playground only; no backend/contracts/config/infrastructure changes or merge into develop.
+
+| Task | Result | Evidence |
+|---|---|---|
+| Command Center | COMPLETE | Schematic offline SVG, three regions, keyboard markers, severity colors/symbols, proximity groups and selected detail panel |
+| Demo scenarios | COMPLETE | Deterministic Normal/Storm/Recovery; offline guest preview does not authenticate or send API requests; Live uses only existing paginated API data |
+| Storage Decision Lab | COMPLETE | API-driven active rules/version, observed metrics/Not measured, actual-file evidence, technologies/alternatives and separate local Simulate |
+| Navigation/updates | COMPLETE | Four primary zones, role-aware existing tools, silent incremental polling and preserved selections |
+| Incident Journey/polish | COMPLETE | File lifecycle separate from ML, no estimated live percentages/history; reduced motion, visual reference used only for presentation |
+| Validation | COMPLETE | Production build, complete 64-test suite passed; final image 8 targeted/layout/live checks passed; no tests removed |
+| One-command clean-machine startup | NOT VALIDATED — ELIMINATORY | Existing readiness limitation retained and documented; local success is not clean-machine acceptance |
+
+Policy Playground does not edit config/storage-policies.yaml. Real changes still require YAML configuration and API restart. Historic benchmarks, costs and performance superiority are not inferred. Map groupings are independent of analysis-local ML cluster labels.
