@@ -812,10 +812,69 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/StoragePolicyConfig"
                 }
               }
             }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace ordered storage policies for new sessions (ADMIN only)",
+        "operationId": "put__policies",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "rules"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/StoragePolicyRule"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Persisted configuration with its newly incremented version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicyConfig"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The expected configuration version is stale"
+          },
+          "422": {
+            "description": "Malformed policy or a security invariant violation"
           },
           "default": {
             "description": "Problem",
@@ -1090,6 +1149,60 @@
           },
           "409": {
             "description": "Demo is not initialized"
+          }
+        }
+      }
+    },
+    "/policies/reset": {
+      "post": {
+        "summary": "Restore bootstrap rules using a new monotonic version (ADMIN only)",
+        "operationId": "post__policies_reset",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restored bootstrap configuration with incremented version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicyConfig"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The expected configuration version is stale"
+          },
+          "422": {
+            "description": "Malformed request"
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
           }
         }
       }
@@ -1484,6 +1597,73 @@
           },
           "groupAnalysis": {
             "type": "object"
+          }
+        }
+      },
+      "StoragePolicyConfig": {
+        "type": "object",
+        "required": [
+          "version",
+          "rules"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePolicyRule"
+            }
+          }
+        }
+      },
+      "StoragePolicyRule": {
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "storage"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "METER_READING",
+              "INCIDENT",
+              "CONNECTION_DOCUMENT",
+              "DRONE_VIDEO"
+            ]
+          },
+          "storage": {
+            "type": "string",
+            "enum": [
+              "DATABASE",
+              "S3",
+              "FTP"
+            ]
+          },
+          "attachmentType": {
+            "type": "string",
+            "enum": [
+              "BINARY",
+              "LEGACY_LOG"
+            ]
+          },
+          "sensitivity": {
+            "type": "string",
+            "enum": [
+              "SENSITIVE",
+              "NON_SENSITIVE"
+            ]
           }
         }
       }

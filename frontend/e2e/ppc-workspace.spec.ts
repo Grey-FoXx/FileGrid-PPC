@@ -143,17 +143,35 @@ test("map clusters by event, time and distance rather than local ML labels; file
   await expect(journey).toContainText("route-log.txt");
 });
 
-test("admin policy dialog traps and restores focus, guards FTP, resets and exports without API writes", async ({ page }) => {
-  let policyWrites = 0;
-  await apiFixtures(page, { onPolicyWrite: () => policyWrites++ });
+test("admin policy dialog keeps keyboard and FTP guards and restores policy through the live API", async ({ page }) => {
+  let active = structuredClone(policies);
+  const initial = structuredClone(policies);
+  const writes: { method: string; path: string; body: Record<string, unknown> }[] = [];
+  let downloads = 0;
+  page.on("download", () => downloads++);
+  await apiFixtures(page, {});
+  await page.route("**/api/v1/policies**", async route => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === "GET") return route.fulfill({ json: active });
+    const body = request.postDataJSON() as Record<string, unknown>;
+    writes.push({ method: request.method(), path, body });
+    if (path.endsWith("/reset")) {
+      active = { ...structuredClone(initial), version: Number(active.version) + 1 };
+    } else {
+      const rules = body["rules"] as typeof policies.rules;
+      active = { version: Number(active.version) + 1, rules };
+    }
+    return route.fulfill({ json: active });
+  });
   await login(page);
   await page.locator("nav button").filter({ hasText: "Politici de stocare" }).click();
   const open = page.locator(".category-card").filter({ hasText: "Avarii" }).getByRole("button", { name: "O nouă politică" });
   await open.click();
   const dialog = page.getByRole("dialog", { name: "O nouă politică" });
   await expect(dialog).toBeVisible();
-  const version = dialog.getByLabel("Versiune nouă");
-  await expect(version).toBeFocused();
+  const category = dialog.getByLabel("Regulă de configurat");
+  await expect(category).toBeFocused();
   await page.keyboard.press("Shift+Tab");
   expect(await dialog.evaluate(element => element.contains(document.activeElement))).toBe(true);
   await page.keyboard.press("Escape");
@@ -164,24 +182,25 @@ test("admin policy dialog traps and restores focus, guards FTP, resets and expor
   await expect(dialog.getByLabel("Destinație")).toHaveValue("S3");
   await expect(dialog.getByLabel("Tip atașament")).toHaveValue("BINARY");
   await dialog.getByLabel("Destinație").selectOption("FTP");
-  const confirm = dialog.getByRole("button", { name: "Confirmă și descarcă" });
+  const confirm = dialog.getByRole("button", { name: "Aplică politica" });
   await confirm.click();
   await expect(dialog.getByRole("alert")).toContainText("FTP este permis numai");
-  await expect(dialog.locator(".generated-config")).toHaveCount(0);
+  expect(writes).toHaveLength(0);
 
   await dialog.getByLabel("Tip atașament").selectOption("LEGACY_LOG");
   await dialog.getByLabel("Sensibilitate").selectOption("NON_SENSITIVE");
-  const generatedDownload = page.waitForEvent("download");
   await confirm.click();
-  const generated = await generatedDownload;
-  expect(generated.suggestedFilename()).toBe("storage-policies.yaml");
-  await expect(dialog.locator(".generated-config")).toContainText("LEGACY_LOG");
+  await expect(dialog.getByRole("status")).toContainText("este activă");
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({ method: "PUT", path: "/api/v1/policies", body: { expectedVersion: 4 } });
+  expect((writes[0].body["rules"] as typeof policies.rules).find(rule => rule.id === "incident-binary"))
+    .toMatchObject({ storage: "FTP", attachmentType: "LEGACY_LOG", sensitivity: "NON_SENSITIVE" });
+  await expect(page.locator(".page-heading")).toContainText("POLICY v5");
 
-  const resetDownload = page.waitForEvent("download");
-  await dialog.getByRole("button", { name: "Resetează la configurația inițială și descarcă" }).click();
-  const reset = await resetDownload;
-  expect(reset.suggestedFilename()).toBe("storage-policies.yaml");
-  await expect(dialog.getByRole("status")).toContainText("Configurația inițială citită din API");
-  await expect(dialog.locator(".generated-config")).toContainText("incident-binary");
-  expect(policyWrites).toBe(0);
+  await dialog.getByRole("button", { name: "Revino la politica inițială" }).click();
+  await expect(dialog.getByRole("status")).toContainText("este activă");
+  expect(writes[1]).toMatchObject({ method: "POST", path: "/api/v1/policies/reset", body: { expectedVersion: 5 } });
+  expect(active.rules).toEqual(initial.rules);
+  expect(downloads).toBe(0);
+  await expect(dialog).not.toContainText("docker compose");
 });

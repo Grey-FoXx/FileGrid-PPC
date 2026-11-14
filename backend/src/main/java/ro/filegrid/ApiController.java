@@ -281,6 +281,48 @@ public class ApiController {
     return policies.configuration();
   }
 
+  @PutMapping("/policies")
+  public Object replacePolicies(@RequestBody Map<String, Object> body, Authentication a) {
+    FileService.roles(a);
+    ApiProblem.require(body.keySet().equals(Set.of("expectedVersion", "rules")), 422,
+        "INVALID_POLICY", "Body must contain expectedVersion and rules only");
+    long expected = expectedPolicyVersion(body.get("expectedVersion"));
+    Object rawRules = body.get("rules");
+    ApiProblem.require(rawRules instanceof List<?>, 422, "INVALID_POLICY", "Rules must be an array");
+    var rules = new ArrayList<Map<String, Object>>();
+    for (Object raw : (List<?>) rawRules) {
+      ApiProblem.require(raw instanceof Map<?, ?>, 422, "INVALID_POLICY", "Each rule must be an object");
+      var rule = new LinkedHashMap<String, Object>();
+      ((Map<?, ?>) raw).forEach((key, value) -> {
+        ApiProblem.require(key instanceof String, 422, "INVALID_POLICY", "Rule keys must be strings");
+        rule.put((String) key, value);
+      });
+      rules.add(rule);
+    }
+    return policies.replace(expected, rules);
+  }
+
+  @PostMapping("/policies/reset")
+  public Object resetPolicies(@RequestBody Map<String, Object> body, Authentication a) {
+    FileService.roles(a);
+    ApiProblem.require(body.keySet().equals(Set.of("expectedVersion")), 422,
+        "INVALID_POLICY", "Body must contain expectedVersion only");
+    return policies.reset(expectedPolicyVersion(body.get("expectedVersion")));
+  }
+
+  private static long expectedPolicyVersion(Object value) {
+    try {
+      ApiProblem.require(value instanceof Number, 422, "INVALID_POLICY", "expectedVersion must be an integer");
+      long expected = new java.math.BigDecimal(value.toString()).longValueExact();
+      ApiProblem.require(expected > 0, 422, "INVALID_POLICY", "expectedVersion must be positive");
+      return expected;
+    } catch (ApiProblem e) {
+      throw e;
+    } catch (Exception e) {
+      throw new ApiProblem(422, "INVALID_POLICY", "expectedVersion must be an integer");
+    }
+  }
+
   @GetMapping("/stats/technical")
   public Object technical(Authentication a) {
     FileService.roles(a, "DISPATCHER");

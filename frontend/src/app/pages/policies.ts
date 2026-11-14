@@ -49,120 +49,90 @@ export class PoliciesPage {
     { key: "FTP", label: "FTP service" },
   ];
   modalOpen = false;
-  draftVersion = 1;
-  draftId = "";
-  draftCategory = "INCIDENT";
-  draftStorage = "S3";
-  draftAttachmentType = "";
-  draftSensitivity = "";
-  error = "";
-  generatedConfig = "";
-  generatedKind: "new" | "restore" = "new";
+  saving = false;
+  selectedRuleId = '';
+  draftId = '';
+  draftCategory = 'INCIDENT';
+  draftStorage = 'S3';
+  draftAttachmentType = '';
+  draftSensitivity = '';
+  error = '';
+  applied = '';
+  private baseConfig: PolicyConfiguration | null = null;
 
   get activeConfig(): PolicyConfiguration | null {
     const value = this.vm.policies() as Partial<PolicyConfiguration> | null;
     return value && Array.isArray(value.rules) ? value as PolicyConfiguration : null;
   }
-  get activeRules(): PolicyRule[] { return this.activeConfig?.rules || []; }
-  get policyVersion() { return this.activeConfig?.version ?? "—"; }
-  get isAdmin() { return this.vm.me()?.role === "ADMIN"; }
-  label(category: string) { return this.categories.find(item => item.key === category)?.label || category; }
-  storageLabel(storage: string) { return this.storageTargets.find(item => item.key === storage)?.label || storage; }
-  rulesFor(category: string) { return this.activeRules.filter(rule => rule.category === category); }
+  get activeRules(): PolicyRule[] {return this.activeConfig?.rules || [];}
+  get policyVersion(){return this.activeConfig?.version ?? '—';}
+  get isAdmin(){return this.vm.me()?.role === 'ADMIN';}
+  label(category:string){return this.categories.find(c=>c.key===category)?.label || category;}
+  storageLabel(storage:string){return this.storageTargets.find(s=>s.key===storage)?.label || storage;}
+  rulesFor(category:string){return this.activeRules.filter(r=>r.category===category);}
+  editableRules(){return this.baseConfig?.rules.filter(r=>r.category===this.draftCategory) || [];}
 
-  newPolicy(category: string) {
-    const version = Number(this.policyVersion);
-    this.draftVersion = Number.isFinite(version) ? version + 1 : 1;
-    this.draftCategory = category;
-    const originalRule = this.activeRules.find(rule => rule.category === category);
-    this.draftStorage = originalRule?.storage || (category === "METER_READING" ? "DATABASE" : "S3");
-    this.draftAttachmentType = originalRule?.attachmentType || "";
-    this.draftSensitivity = originalRule?.sensitivity || "";
-    this.draftId = this.uniqueId(category);
-    this.error = "";
-    this.generatedConfig = "";
-    this.generatedKind = "new";
-    this.modalOpen = true;
-    setTimeout(() => {
-      const dialog = this.policyDialog?.nativeElement;
-      if (dialog && !dialog.open) dialog.showModal();
-    });
+  newPolicy(category:string){
+    if(!this.isAdmin || !this.activeConfig) return;
+    this.baseConfig=structuredClone(this.activeConfig);
+    this.draftCategory=category;this.onCategoryChanged();this.error='';this.applied='';this.modalOpen=true;
+    setTimeout(()=>{const dialog=this.policyDialog?.nativeElement;if(dialog&&!dialog.open)dialog.showModal();});
   }
-  private uniqueId(category: string) {
-    const base = "rule-" + category.toLocaleLowerCase("en-US").replaceAll("_", "-");
-    const existing = new Set(this.activeRules.map(rule => rule.id));
-    if (!existing.has(base)) return base;
-    let suffix = 2;
-    while (existing.has(`${base}-${suffix}`)) suffix++;
-    return `${base}-${suffix}`;
+  onCategoryChanged(){
+    this.selectedRuleId=this.editableRules()[0]?.id || '';
+    this.selectRule();
   }
-  closeModal() {
-    this.modalOpen = false;
-    this.error = "";
-    if (this.policyDialog?.nativeElement.open) this.policyDialog.nativeElement.close();
+  selectRule(){
+    const rule=this.editableRules().find(r=>r.id===this.selectedRuleId);
+    this.draftId=rule?.id || '';this.draftStorage=rule?.storage || '';
+    this.draftAttachmentType=rule?.attachmentType || '';this.draftSensitivity=rule?.sensitivity || '';
+    this.error='';this.applied='';
   }
-  onCategoryChanged() {
-    const originalRule = this.activeRules.find(rule => rule.category === this.draftCategory);
-    this.draftStorage = originalRule?.storage || (this.draftCategory === "METER_READING" ? "DATABASE" : "S3");
-    this.draftAttachmentType = originalRule?.attachmentType || "";
-    this.draftSensitivity = originalRule?.sensitivity || "";
-    this.draftId = this.uniqueId(this.draftCategory);
+  closeModal(){
+    if(this.saving)return;
+    this.modalOpen=false;this.error='';
+    if(this.policyDialog?.nativeElement.open)this.policyDialog.nativeElement.close();
   }
-  private validate(): string {
-    if (!this.activeConfig) return "Configurația activă nu a fost încărcată. Reîncarcă politicile înainte de generare.";
-    if (!Number.isInteger(Number(this.draftVersion)) || Number(this.draftVersion) <= Number(this.policyVersion)) return "Versiunea nouă trebuie să fie un număr întreg mai mare decât versiunea activă.";
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(this.draftId.trim())) return "ID-ul regulii trebuie să aibă 1–80 caractere: litere, cifre, punct, _ sau -.";
-    if (this.activeRules.some(rule => rule.id === this.draftId.trim())) return "ID-ul regulii există deja în configurația activă.";
-    if (this.draftCategory === "METER_READING" && this.draftStorage !== "DATABASE") return "Citirile de contor trebuie rutate către DATABASE.";
-    if (["CONNECTION_DOCUMENT", "DRONE_VIDEO"].includes(this.draftCategory) && this.draftStorage !== "S3") return "Documentele de racordare și videoclipurile dronă trebuie rutate către S3.";
-    if (this.draftCategory === "INCIDENT" && !["S3", "FTP"].includes(this.draftStorage)) return "Avariile pot fi rutate doar către S3 sau FTP.";
-    if (this.draftCategory === "INCIDENT" && this.draftStorage === "FTP" && (this.draftAttachmentType !== "LEGACY_LOG" || this.draftSensitivity !== "NON_SENSITIVE")) return "FTP este permis numai pentru LEGACY_LOG cu sensibilitate NON_SENSITIVE.";
-    return "";
+  private validate(){
+    if(!this.baseConfig || !this.selectedRuleId)return 'Încarcă mai întâi politica activă.';
+    if(!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(this.draftId.trim()))return 'ID-ul regulii trebuie să aibă 1–80 caractere: litere, cifre, punct, _ sau -.';
+    if(this.baseConfig.rules.some(r=>r.id!==this.selectedRuleId && r.id===this.draftId.trim()))return 'ID-ul este folosit de altă regulă.';
+    if(this.draftCategory==='METER_READING' && this.draftStorage!=='DATABASE')return 'Citirile de contor trebuie rutate către DATABASE.';
+    if(['CONNECTION_DOCUMENT','DRONE_VIDEO'].includes(this.draftCategory) && this.draftStorage!=='S3')return 'Documentele de racordare și videoclipurile dronă trebuie rutate către S3.';
+    if(this.draftCategory==='INCIDENT' && !['S3','FTP'].includes(this.draftStorage))return 'Avariile pot fi rutate doar către S3 sau FTP.';
+    if(this.draftStorage==='FTP' && (this.draftAttachmentType!=='LEGACY_LOG'||this.draftSensitivity!=='NON_SENSITIVE'))return 'FTP este permis numai pentru LEGACY_LOG cu sensibilitate NON_SENSITIVE.';
+    return '';
   }
-  confirmPolicy() {
-    this.error = this.validate();
-    if (this.error) return;
-    const active = this.activeConfig!;
-    const rule: PolicyRule = { id: this.draftId.trim(), category: this.draftCategory, storage: this.draftStorage };
-    if (this.draftCategory === "INCIDENT") {
-      if (this.draftAttachmentType) rule.attachmentType = this.draftAttachmentType;
-      if (this.draftSensitivity) rule.sensitivity = this.draftSensitivity;
+  async confirmPolicy(){
+    if(this.saving || !this.isAdmin)return;
+    this.error=this.validate();if(this.error)return;
+    const rule:PolicyRule={id:this.draftId.trim(),category:this.draftCategory,storage:this.draftStorage};
+    if(this.draftCategory==='INCIDENT'){
+      if(this.draftAttachmentType)rule.attachmentType=this.draftAttachmentType;
+      if(this.draftSensitivity)rule.sensitivity=this.draftSensitivity;
     }
-    const rules = [...active.rules];
-    const firstCategoryRule = rules.findIndex(existing => existing.category === rule.category);
-    rules.splice(firstCategoryRule < 0 ? rules.length : firstCategoryRule, 0, rule);
-    const config = { ...active, version: Number(this.draftVersion), rules };
-    this.generatedConfig = JSON.stringify(config, null, 2) + "\n";
-    this.generatedKind = "new";
-    this.error = "";
-    this.downloadConfig(this.generatedConfig);
+    const rules=this.baseConfig!.rules.map(r=>r.id===this.selectedRuleId?rule:r);
+    await this.apply('/policies',{expectedVersion:this.baseConfig!.version,rules},rule.id);
   }
-  restoreOriginalConfig() {
-    if (!this.activeConfig) return;
-    this.generatedConfig = "";
-    this.error = "";
-    const firstRule = this.activeRules[0];
-    if (firstRule) {
-      this.draftCategory = firstRule.category;
-      this.draftStorage = firstRule.storage;
-      this.draftAttachmentType = firstRule.attachmentType || "";
-      this.draftSensitivity = firstRule.sensitivity || "";
-      this.draftId = this.uniqueId(firstRule.category);
-    }
-    const version = Number(this.policyVersion);
-    this.draftVersion = Number.isFinite(version) ? version + 1 : 1;
-    this.generatedConfig = JSON.stringify(this.activeConfig, null, 2) + "\n";
-    this.generatedKind = "restore";
-    this.downloadConfig(this.generatedConfig);
+  async restoreOriginalConfig(){
+    if(this.saving || !this.isAdmin || !this.baseConfig)return;
+    await this.apply('/policies/reset',{expectedVersion:this.baseConfig.version},'');
   }
-  downloadConfig(content: string) {
-    const blob = new Blob([content], { type: "application/yaml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "storage-policies.yaml";
-    anchor.click();
-    URL.revokeObjectURL(url);
+  private async apply(path:string,body:object,ruleId:string){
+    const generation=this.vm.generation();this.saving=true;this.error='';this.applied='';
+    try{
+      const config=await this.vm.api.request<PolicyConfiguration>(path,{method:path.endsWith('/reset')?'POST':'PUT',body:JSON.stringify(body)});
+      if(generation!==this.vm.generation())return;
+      this.vm.policies.set(config);this.baseConfig=structuredClone(config);
+      this.selectedRuleId=ruleId || this.editableRules()[0]?.id || '';
+      this.selectRule();
+      this.applied='Politica v'+config.version+' este activă. Se aplică sesiunilor noi; fișierele și transferurile deja create își păstrează destinația și versiunea.';
+    }catch(e){if(generation===this.vm.generation())this.error=this.vm.problemMessage(e);}
+    finally{if(generation===this.vm.generation())this.saving=false;}
   }
-  get restartCommand() { return "docker compose restart api"; }
+  async reloadDraft(){
+    if(this.saving)return;
+    await this.vm.refresh();
+    if(this.activeConfig){this.baseConfig=structuredClone(this.activeConfig);this.onCategoryChanged();}
+  }
 }

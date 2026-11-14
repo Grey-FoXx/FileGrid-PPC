@@ -390,6 +390,71 @@ class ApiIntegrationTest {
     assertEquals(0L, db.queryForObject("SELECT count(*) FROM incidents WHERE metadata::jsonb->>'demoSet'='old-nonexistent-tag'", Long.class));
   }
 
+  @Test
+  void storagePoliciesAreValidatedVersionedAndPersistedForNewSessionsOnly() throws Exception {
+    JsonNode active = call(as(get("/api/v1/policies"), "admin"), 200);
+    long version = active.get("version").asLong();
+    List<Map<String, Object>> rules = json.convertValue(active.get("rules"),
+        new com.fasterxml.jackson.core.type.TypeReference<>() {});
+    String legacy = "legacy-diagnostic";
+    assertTrue(rules.stream().anyMatch(rule -> legacy.equals(rule.get("id"))));
+    String incident = call(as(post("/api/v1/incidents"), "admin")
+        .header("Idempotency-Key", UUID.randomUUID().toString()).contentType("application/json")
+        .content("{\"stationId\":\"POLICY-TEST-ST\",\"zone\":\"Banat\",\"eventType\":\"POLICY_TEST\",\"severity\":2,\"latitude\":45.75,\"longitude\":21.23}"), 201).get("id").asText();
+    byte[] diagnostic = "synthetic legacy test diagnostic".getBytes();
+    JsonNode oldSession = session("admin", "INCIDENT", diagnostic,
+        Map.of("incidentId", incident, "attachmentType", "LEGACY_LOG", "sensitivity", "NON_SENSITIVE"));
+    JsonNode oldFile = call(as(get("/api/v1/files/" + oldSession.get("fileId").asText()), "admin"), 200);
+    assertEquals("FTP", oldFile.get("storage").asText());
+    assertEquals(Long.toString(version), oldFile.get("policyVersion").asText());
+
+    var legacyRule = rules.stream().filter(rule -> legacy.equals(rule.get("id"))).findFirst().orElseThrow();
+    legacyRule.put("id", "legacy-diagnostic-v" + (version + 1));
+    legacyRule.put("storage", "S3");
+    byte[] request = json.writeValueAsBytes(Map.of("expectedVersion", version, "rules", rules));
+    JsonNode saved = call(as(put("/api/v1/policies"), "admin").contentType("application/json").content(request), 200);
+    assertEquals(version + 1, saved.get("version").asLong());
+    assertEquals(saved, call(as(get("/api/v1/policies"), "dispatcher"), 200));
+    var peer = new PolicyEngine(db, json, Path.of("../config/storage-policies.yaml").toString());
+    JsonNode peerConfig = json.valueToTree(peer.configuration());
+    assertEquals(saved.get("version").asLong(), peerConfig.get("version").asLong());
+    assertEquals(saved.get("rules").toString(), peerConfig.get("rules").toString());
+
+    mvc.perform(as(put("/api/v1/policies"), "admin").contentType("application/json").content(request))
+        .andExpect(status().isConflict());
+    var invalid = new ArrayList<Map<String, Object>>();
+    for (var rule : rules) invalid.add(new LinkedHashMap<>(rule));
+    invalid.stream().filter(rule -> "connection-private".equals(rule.get("id"))).findFirst().orElseThrow()
+        .put("storage", "FTP");
+    mvc.perform(as(put("/api/v1/policies"), "admin").contentType("application/json")
+            .content(json.writeValueAsBytes(Map.of("expectedVersion", version + 1, "rules", invalid))))
+        .andExpect(status().isUnprocessableEntity());
+    var missingFallback = rules.stream()
+        .filter(rule -> !"METER_READING".equals(rule.get("category")))
+        .map(LinkedHashMap<String, Object>::new).toList();
+    mvc.perform(as(put("/api/v1/policies"), "admin").contentType("application/json")
+            .content(json.writeValueAsBytes(Map.of("expectedVersion", version + 1, "rules", missingFallback))))
+        .andExpect(status().isUnprocessableEntity());
+    mvc.perform(as(put("/api/v1/policies"), "dispatcher").contentType("application/json").content(request))
+        .andExpect(status().isForbidden());
+
+    JsonNode newSession = session("admin", "INCIDENT", diagnostic,
+        Map.of("incidentId", incident, "attachmentType", "LEGACY_LOG", "sensitivity", "NON_SENSITIVE"));
+    JsonNode newFile = call(as(get("/api/v1/files/" + newSession.get("fileId").asText()), "admin"), 200);
+    assertEquals("S3", newFile.get("storage").asText());
+    assertEquals(Long.toString(version + 1), newFile.get("policyVersion").asText());
+    assertEquals(Long.toString(version), call(as(get("/api/v1/files/" + oldSession.get("fileId").asText()), "admin"), 200).get("policyVersion").asText());
+
+    JsonNode reset = call(as(post("/api/v1/policies/reset"), "admin").contentType("application/json")
+        .content(json.writeValueAsBytes(Map.of("expectedVersion", version + 1))), 200);
+    assertEquals(version + 2, reset.get("version").asLong());
+    assertEquals(active.get("rules"), reset.get("rules"));
+    assertEquals(version + 2, call(as(get("/api/v1/policies"), "admin"), 200).get("version").asLong());
+    mvc.perform(as(post("/api/v1/policies/reset"), "admin").contentType("application/json")
+            .content(json.writeValueAsBytes(Map.of("expectedVersion", version + 1))))
+        .andExpect(status().isConflict());
+  }
+
   @AfterAll
   void stop() throws Exception {
     if (pg != null) pg.close();
