@@ -42,7 +42,9 @@ test("Compose: file remains downloadable while the actual ML worker is paused", 
     await page.getByRole("button", { name: "Încarcă / reia transferul" }).click();
     await expect(page.getByRole("status")).toContainText("Fișier disponibil", { timeout: 20000 });
     await page.locator("nav button").filter({ hasText: "Dispecerat" }).click();
-    const card = page.locator(".incident-card").filter({ hasText: incidentId.slice(0, 8) });
+    const card = page.locator(".incident-card, .group-report").filter({ hasText: incidentId.slice(0, 8) });
+    await expect(card).toHaveCount(1);
+    await card.evaluate(element => { const details=element.closest('details'); if(details) details.open=true; });
     await expect(card.locator(".badge").filter({ hasText: /^PENDING$/ })).toBeVisible();
     await expect(card.getByText("AVAILABLE", { exact: true })).toBeVisible();
     const download = page.waitForEvent("download");
@@ -56,7 +58,7 @@ test("Compose: file remains downloadable while the actual ML worker is paused", 
   } finally {
     ml("unpause");
   }
-  const card = page.locator(".incident-card").filter({ hasText: incidentId.slice(0, 8) });
+  const card = page.locator(".incident-card, .group-report").filter({ hasText: incidentId.slice(0, 8) });
   await expect(card.locator(".badge").filter({ hasText: /^COMPLETED$/ })).toBeVisible({ timeout: 25000 });
   await expect(card.getByRole("heading", { name: "Model 1 · Impact și urgență" })).toBeVisible();
   await expect(card.getByRole("heading", { name: "Model 2 · Corelare incidente" })).toBeVisible();

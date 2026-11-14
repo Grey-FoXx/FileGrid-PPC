@@ -11,7 +11,6 @@ import { SectionStateComponent } from "../section-state";
 })
 export class DashboardPage {
  readonly vm = inject(WorkspaceStore);
- scenario = 'NORMAL';
  risks() {
   const risks:string[]=[];
   if(this.vm.series().some(s=>s.errorRate>0)) risks.push('API-ul raportează operații cu erori. Verifică durabilitatea și disponibilitatea categoriilor afectate.');

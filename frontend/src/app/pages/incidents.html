@@ -11,7 +11,7 @@
             + Raportează avarie
           </button>
         </section>
-        <filegrid-incident-map [rows]="vm.visibleIncidents()" />
+        <filegrid-incident-map [rows]="vm.dispatchIncidents()" />
         <filegrid-section-state [state]="vm.states()['incidents']" label="incidentele" (retry)="vm.refresh()" />
         @if (vm.canStats()) {
           <filegrid-section-state [state]="vm.states()['business']" label="modul operațional" (retry)="vm.refresh()" />
@@ -27,6 +27,38 @@
           <select aria-label="Ordonează incidentele" [(ngModel)]="vm.incidentSort"><option value="auto">Ordine adaptată modului</option><option value="reported">Cele mai recente</option><option value="priority">Prioritate</option></select>
         </div>
         <p class="footnote">{{ vm.incidentTotal() }} incidente accesibile · filtrele și ordonarea se aplică paginii curente. În ordinea de prioritate, semnalele critice de siguranță și evaluările imediate preced scorul numeric; fără analiză se folosește severitatea raportată.</p>
+        @if(vm.me()?.features?.incidentGroups && vm.canStats()) {
+          <filegrid-section-state [state]="vm.states()['groups']" label="grupurile de intervenție" (retry)="vm.refresh()" />
+          <label class="checkbox"><input type="checkbox" [(ngModel)]="showResolved" />Arată și avariile rezolvate</label>
+          <p>Un grup = o intervenție. Trimiterea echipajului și rezolvarea se aplică tuturor rapoartelor din grup, inclusiv celor adăugate ulterior cât timp grupul rămâne deschis.</p>
+          <div class="incident-grid">
+          @for(group of visibleGroups(); track group.id){
+            <article class="panel group-card" [class.resolved]="group.status === 'RESOLVED'">
+              @if(critical(group)){<p class="badge bad">CRITIC DE SIGURANȚĂ · evaluare umană imediată</p>}
+              <div class="panel-heading"><span class="badge" [class.bad]="group.severity >= 4">SEVERITATE {{group.severity}}</span><span class="badge group-status">{{vm.statusLabel(group.status)}}</span></div>
+              <h2>{{group.zone}} · {{group.eventType}}</h2><p>{{group.incidents.length}} rapoarte · grup {{group.id.slice(0,8)}}</p>
+              <div class="group-lifecycle" aria-label="Starea intervenției">@for(status of ['NEW','DISPATCHED','RESOLVED'];track status){<span [class.current]="group.status === status">{{status === 'NEW' ? '1 · Nouă' : status === 'DISPATCHED' ? '2 · Echipaj trimis' : '3 · Rezolvată'}}</span>}</div>
+              @if(analysis(group);as a){
+                <div class="model-grid"><section class="model-result"><h3>Model 1 · Impact și urgență</h3><p>Scor de prioritate {{a.priorityScore | number:'1.0-1'}} / 100 · {{a.priorityClass}}</p><small>{{a.modelVersions?.['impact'] || 'Versiune indisponibilă'}}</small></section>
+                <section class="model-result"><h3>Model 2 · Corelare incidente</h3><p>{{group.incidents.length}} rapoarte reunite în grupul persistent.</p><small>{{a.modelVersions?.['correlation'] || 'Versiune indisponibilă'}}</small></section></div>
+                <section class="recommendation"><span class="eyebrow">DECISION AGENT</span><h3>{{vm.decisionLabel(a.recommendation)}}</h3><ul>@for(reason of a.reasons;track $index){<li>{{reason}}</li>}</ul><small>Recomandarea raportului analizat cu prioritatea cea mai mare din grup. Gruparea statistică nu dovedește singură cauza defecțiunii.</small></section>
+              } @else {<p class="callout">Corelarea și analiza se actualizează asincron. Intervenția și accesul la fișiere nu așteaptă ML.</p>}
+              @if(group.status !== 'RESOLVED'){
+                <button class="primary group-action" [disabled]="!!vm.groupBusy()" (click)="vm.advanceGroup(group)">{{vm.groupBusy() === group.id ? 'Se salvează…' : group.status === 'NEW' ? '→ Trimite echipaj pentru grup' : '✓ Marchează întregul grup rezolvat'}}</button>
+              }
+              <details class="group-member-list"><summary>Vezi cele {{group.incidents.length}} rapoarte și atașamentele</summary>
+                @for(i of group.incidents;track i.id){
+                  <section class="group-report" [attr.data-incident-id]="i.id"><small>{{i.id.slice(0,8)}}</small><h3>{{i.stationId}} · severitate {{i.severity}}</h3><p>{{i.eventType}} · {{i.affectedCustomers}} clienți raportați</p><p>Analiză ML <span class="badge" [class.teal]="i.mlStatus === 'COMPLETED'">{{i.mlStatus}}</span></p>
+                    @for(f of i.attachments;track f.id){<div class="attachment"><span>{{f.filename}}<small>{{f.status}}</small><small>{{f.storage}}</small></span><button class="text-button" [disabled]="f.status !== 'AVAILABLE' || vm.downloads.busy() || !vm.downloads.allowed(f)" [attr.aria-label]="'Descarcă '+f.filename" (click)="vm.download(f)">↓</button></div>}
+                    @if(i.analysis;as a){<div class="model-grid"><section class="model-result"><h3>Model 1 · Impact și urgență</h3><p>{{a.priorityScore | number:'1.0-1'}} / 100 · {{a.priorityClass}}</p><small>{{a.modelVersions?.['impact']}}</small></section><section class="model-result"><h3>Model 2 · Corelare incidente</h3><p>{{a.clusterSize ?? '—'}} rapoarte în instantaneul analizei</p><small>{{a.modelVersions?.['correlation']}}</small></section></div><section class="recommendation"><span class="eyebrow">DECISION AGENT · RAPORT</span><h3>{{vm.decisionLabel(a.recommendation)}}</h3><ul>@for(reason of a.reasons;track $index){<li>{{reason}}</li>}</ul></section>}
+                    <button class="text-button" (click)="vm.attachTo(i)">+ Adaugă atașament →</button>
+                  </section>
+                }
+              </details>
+            </article>
+          } @empty {<section class="panel empty">{{vm.states()['groups']?.loading ? 'Se încarcă grupurile…' : 'Nicio avarie deschisă pentru selecția curentă.'}}</section>}
+          </div>
+        } @else {
         <div class="incident-grid">
           @for (i of vm.visibleIncidents(); track i.id) {
             <article class="panel incident-card">
@@ -105,3 +137,5 @@
           <span>Pagina {{ vm.incidentPage() + 1 }}</span>
           <button class="secondary" [disabled]="(vm.incidentPage() + 1) * 25 >= vm.incidentTotal()" (click)="vm.pageList('incidents', 1)">Incidente următoare →</button>
         </div>
+
+}

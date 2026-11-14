@@ -10,6 +10,13 @@ import { WorkspaceStore } from "../workspace";
 })
 export class UploadPage {
  readonly vm = inject(WorkspaceStore);
+ newIncident() {
+  if(this.vm.busy() || this.vm.uploads.recovery() || this.vm.uploads.requestedResume()) return;
+  this.vm.uploads.incidentId='';
+  this.vm.uploads.stationId='';
+  this.vm.uploads.safetyCritical=false;
+  this.vm.focus('#station-id');
+ }
  async submit() {
   const generation = this.vm.generation();
   if(this.vm.uploads.category === 'INCIDENT' && !this.vm.uploads.incidentId) await this.vm.uploads.createIncident();

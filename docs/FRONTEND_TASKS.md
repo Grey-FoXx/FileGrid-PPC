@@ -44,3 +44,13 @@ User-authorized replacement of the Command Center navigation. The six-section ba
 Mandatory outstanding requirement: clean-machine startup through one command remains **UNVALIDATED**. Local production gateway rebuild does not satisfy it. Backend, infrastructure, contracts and runtime policy configuration were not edited.
 
 Revision validation complete: Angular production build PASS; final production-served browser suite **64 passed / 0 failed / 0 skipped**, including all 61 retained baseline cases and three PPC-specific tests. Existing gateway updated for user testing at https://localhost:8443. No merge or push performed.
+
+## Real demo and grouped interventions — completed on feature/demo-command-center
+
+- FE-DEMO-LIVE: opt-in backend synthetic dataset; first-login idempotent initialization; real paced Normal/Storm state; global reset limited to registered demo data; preserved access to all ordinary data. Initial dataset: 6 incidents, 4 readings, 13 real stored files including encrypted documents, FTP diagnostics and three multipart sizes.
+- FE-GROUPS: persistent backend groups, metadata-only arrivals + asynchronous DBSCAN member reconciliation, unresolved-group map, shared Nouă → Echipaj trimis → Rezolvată lifecycle, late members inherit an open intervention state, resolved history remains accessible. No LLM or unproven common-cause assertion.
+- FE-JOURNEY-DATA: category-specific API query/pagination independent of current catalog page, journey first in Files, shared SVG/grid connector geometry, existing verified downloads retained.
+- FE-NEW-REPORT: explicit “+” button, fresh report context and immediate refresh of the first incident page; groups update from backend independently of the catalog page.
+- FE-DEMO-AUTH: capability/scope handshake completes before workspace navigation; supported human roles use the small demo view by default, with write controls restricted to ADMIN and intervention controls to ADMIN/DISPATCHER.
+
+Validation: **67 browser tests, 6 Java tests and 4 ML tests passed**, production build and Compose configuration passed. Real storage/reset checks preserved all captured ordinary IDs. The local stack is left in the initial Normal scenario; the old ordinary meter generator is stopped, with its journal/data retained. Backend/API/ML changes are a necessary coordinated extension of the user's new request and are committed separately from frontend integration. Clean-machine single-command startup and external alert delivery remain UNVALIDATED.

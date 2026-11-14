@@ -35,7 +35,18 @@ export interface Analysis {
   policyVersion?: string;
   timestamp?: string;
 }
+export interface DemoState {
+ enabled: boolean; initialized: boolean; mode: 'NORMAL'|'STORM'; generating: boolean; seedVersion: string | number;
+}
+export type InterventionStatus = 'NEW'|'DISPATCHED'|'RESOLVED';
+export interface IncidentGroup {
+ id: string; status: InterventionStatus; zone: string; eventType: string; severity: number;
+ latitude?: number; longitude?: number; incidents: Incident[];
+}
+export interface WorkspaceUser { username: string; role: string; features?: {demo?: boolean; incidentGroups?: boolean}; }
 export interface Incident {
+  groupId?: string;
+  interventionStatus?: InterventionStatus;
   id: string;
   latitude?: number;
   longitude?: number;
@@ -72,6 +83,7 @@ export interface ApiError extends Error {
 }
 export interface RequestTrace { correlationId: string; path: string; at: string; status: number; durationMs: number; fileId?: string; }
 export class Api {
+  demoScope = false;
   readonly traces = signal<RequestTrace[]>([]);
   private sessionFiles = new Map<string,string>();
   private auth = "";
@@ -85,6 +97,7 @@ export class Api {
     this.credentials.abort();
     this.credentials = new AbortController();
     this.auth = "";
+    this.demoScope = false;
     this.traces.set([]);
     this.sessionFiles.clear();
   }
@@ -108,6 +121,7 @@ export class Api {
   async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     headers.set("Authorization", this.auth);
+    if(this.demoScope) headers.set("X-FileGrid-Demo", "true");
     const correlationId = crypto.randomUUID();
     headers.set("X-Correlation-ID", correlationId);
     const started = performance.now();
@@ -142,6 +156,7 @@ export class Api {
       signal: signal ? AbortSignal.any([signal, credentials.signal]) : credentials.signal,
       headers: {
         Authorization: this.auth,
+        ...(this.demoScope ? {"X-FileGrid-Demo":"true"} : {}),
         "X-Correlation-ID": crypto.randomUUID(),
       },
     });

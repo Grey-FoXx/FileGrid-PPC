@@ -38,12 +38,12 @@
               </select></label
             >
             @if (vm.uploads.category === "INCIDENT") {
-              <label
+              <div class="incident-picker"><label
                 >Incident asociat<select
                   [(ngModel)]="vm.uploads.incidentId"
                   [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()"
                 >
-                  <option value="">Selectează sau creează un incident</option>
+                  <option value="">Avarie nouă · completează datele mai jos</option>
                   @if (vm.uploads.incidentId && !vm.uploads.hasIncident(vm.uploads.incidentId)) {
                     <option [value]="vm.uploads.incidentId">Incident salvat · {{ vm.uploads.incidentId }}</option>
                   }
@@ -52,8 +52,8 @@
                       {{ i.stationId }} · {{ i.zone }} · {{ i.id.slice(0, 8) }}
                     </option>
                   }
-                </select></label
-              >
+                </select></label>
+                <button class="primary new-incident" aria-label="Adaugă un incident nou" title="Adaugă un incident nou" (click)="newIncident()" [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()">+</button></div>
               <div class="form-row">
                 <label
                   >Tip atașament<select

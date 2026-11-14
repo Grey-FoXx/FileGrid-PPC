@@ -2,7 +2,7 @@ import { Injectable, OnDestroy, signal } from "@angular/core";
 import { DownloadController } from "./download";
 import { UploadController } from "./upload";
 import { SectionState } from "./section-state";
-import { Api, ApiError, FileRecord, Incident, Reading, Page } from "./api";
+import { Api, ApiError, FileRecord, Incident, IncidentGroup, DemoState, WorkspaceUser, InterventionStatus, Reading, Page } from "./api";
 interface Business {
   files: number;
   readings: number;
@@ -35,7 +35,13 @@ export class WorkspaceStore implements OnDestroy {
   private lastRefreshError = "";
   windowMinutes = signal<number | null>(null);
   snapshots = signal<Record<string, { at: string; window: number | null; series: Series[] }>>({});
-  me = signal<{ username: string; role: string } | null>(null);
+  me = signal<WorkspaceUser | null>(null);
+  demo = signal<DemoState | null>(null);
+  demoView = signal(false);
+  demoBusy = signal(false);
+  datasetEpoch = signal(0);
+  groups = signal<IncidentGroup[]>([]);
+  groupBusy = signal('');
   tab = signal("dashboard");
   busy = signal(false);
   loading = signal(false);
@@ -67,9 +73,11 @@ export class WorkspaceStore implements OnDestroy {
   fileTotal = signal(0);
   selectedFile = signal<FileRecord | null>(null);
   uploads = new UploadController(this);
+  private lastRefreshAt = 0;
   private timer = window.setInterval(() => {
-    if (this.me() && !this.loading()) void this.refresh(true);
-  }, 5000);
+    const interval=this.demoView() && this.demo()?.mode==='STORM' ? 1000 : 5000;
+    if(this.me() && !this.loading() && Date.now()-this.lastRefreshAt>=interval) void this.refresh(true);
+  }, 1000);
   tabs = [
     ["dashboard", "▦", "Acasă"],
     ["upload", "↑", "Încarcă fișiere"],
@@ -110,10 +118,18 @@ export class WorkspaceStore implements OnDestroy {
     this.error.set("");
     try {
       this.api.setCredentials(this.username, this.password);
-      const me = await this.api.request<{ username: string; role: string }>("/me");
+      const me = await this.api.request<WorkspaceUser>("/me");
       if (generation !== this.authGeneration) return;
       if (!["ADMIN", "DISPATCHER", "FIELD_OPERATOR", "CONNECTION_AGENT"].includes(me.role))
         throw new Error("Acest cont este destinat ingestiei automate. Folosește un cont de operator pentru interfață.");
+      if(me.features?.demo){
+        let state=await this.api.request<DemoState>('/demo');
+        if(state.enabled && !state.initialized && me.role==='ADMIN') state=await this.api.request<DemoState>('/demo/initialize',{method:'POST'});
+        if(generation!==this.authGeneration) return;
+        this.demo.set(state);
+        this.demoView.set(state.enabled);
+        this.api.demoScope=state.enabled;
+      }
       this.me.set(me);
       this.password = "";
       this.uploads.category = me.role === "CONNECTION_AGENT" ? "CONNECTION_DOCUMENT" : "INCIDENT";
@@ -139,6 +155,12 @@ export class WorkspaceStore implements OnDestroy {
     this.downloads.reset();
     this.states.set({});
     this.snapshots.set({});
+    this.demo.set(null);
+    this.demoView.set(false);
+    this.groups.set([]);
+    this.demoBusy.set(false);
+    this.groupBusy.set('');
+    this.datasetEpoch.update(n=>n+1);
     this.windowMinutes.set(null);
     this.lastRefreshError = "";
     this.statusFilter = "";
@@ -179,6 +201,7 @@ export class WorkspaceStore implements OnDestroy {
   }
   async refresh(_silent = false) {
     if (!this.me()) return;
+    this.lastRefreshAt=Date.now();
     this.refreshController?.abort();
     const controller = new AbortController();
     this.refreshController = controller;
@@ -225,6 +248,12 @@ export class WorkspaceStore implements OnDestroy {
     } else if (this.me()?.role === "FIELD_OPERATOR") {
       requests.push(load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { if (JSON.stringify(this.incidents()) !== JSON.stringify(i.items)) this.incidents.set(i.items); this.incidentTotal.set(i.total); }));
     }
+    if(this.me()?.features?.incidentGroups && this.canStats())
+      requests.push(load<{items:IncidentGroup[];total:number}>('groups','/incident-groups?includeResolved=true', result=>{
+        if(JSON.stringify(this.groups())!==JSON.stringify(result.items)) this.groups.set(result.items);
+      }));
+    if(this.demo()?.enabled)
+      requests.push(load<DemoState>('demo','/demo',state=>this.demo.set(state)));
     if (this.tab() === "policies")
       requests.push(load<unknown>("policies", "/policies", p => this.policies.set(p)));
     await Promise.all(requests);
@@ -235,6 +264,58 @@ export class WorkspaceStore implements OnDestroy {
       this.error.set(this.lastRefreshError);
     } else if (this.error() === this.lastRefreshError) this.error.set("");
     this.loading.set(false);
+  }
+  canManageDemo(){return this.me()?.role==='ADMIN' && this.demo()?.enabled===true;}
+  resetViewData(){
+    this.files.set([]);this.incidents.set([]);this.groups.set([]);this.series.set([]);this.business.set(null);this.readings.set([]);
+    this.states.set({});this.selectedFile.set(null);this.filePage.set(0);this.incidentPage.set(0);this.meterPage.set(0);
+    this.fileTotal.set(0);this.incidentTotal.set(0);this.meterTotal.set(0);this.categoryFilter='';this.statusFilter='';this.search='';this.incidentSearch='';this.incidentML='';
+    this.uploads.reset();this.uploads.category=this.canDocuments()&&!this.canIncidents()?'CONNECTION_DOCUMENT':'INCIDENT';
+    this.datasetEpoch.update(n=>n+1);
+  }
+  async switchDataset(){
+    if(this.busy()||this.demoBusy()||this.downloads.busy()) return;
+    this.refreshController?.abort();
+    this.demoView.update(value=>!value);this.api.demoScope=this.demoView();this.resetViewData();await this.refresh();
+  }
+  async setDemoMode(mode:'NORMAL'|'STORM'){
+    if(!this.canManageDemo()||this.demoBusy()) return;
+    const generation=this.authGeneration;this.demoBusy.set(true);this.error.set('');
+    try{
+      const state=await this.api.request<DemoState>('/demo/mode',{method:'POST',body:JSON.stringify({mode})});
+      if(generation!==this.authGeneration)return;this.demo.set(state);await this.refresh(true);
+    }catch(e){if(generation===this.authGeneration)this.fail(e);}
+    finally{if(generation===this.authGeneration)this.demoBusy.set(false);}
+  }
+  async resetDemo(){
+    if(!this.canManageDemo()||this.demoBusy()||this.busy()||this.downloads.busy()) return;
+    const generation=this.authGeneration;this.demoBusy.set(true);this.error.set('');
+    try{
+      const state=await this.api.request<DemoState>('/demo/reset',{method:'POST'});
+      if(generation!==this.authGeneration)return;
+      this.demo.set(state);this.demoView.set(true);this.api.demoScope=true;this.uploads.clearDemoReferences();this.resetViewData();
+      this.notice.set('Demo resetat. Datele existente din afara demo-ului au fost păstrate.');await this.refresh();
+    }catch(e){if(generation===this.authGeneration)this.fail(e);}
+    finally{if(generation===this.authGeneration)this.demoBusy.set(false);}
+  }
+  dispatchIncidents(): Incident[]{
+    if(!this.me()?.features?.incidentGroups || !this.canStats())return this.visibleIncidents().filter(i=>i.interventionStatus!=='RESOLVED');
+    return this.groups().filter(g=>g.status!=='RESOLVED').flatMap(g=>g.incidents.map(i=>({...i,groupId:g.id,interventionStatus:g.status})));
+  }
+  visibleGroups(){
+    const search=this.incidentSearch.trim().toLocaleLowerCase('ro');
+    return this.groups().filter(g=>(!search||[g.zone,g.eventType,...g.incidents.map(i=>i.stationId)].join(' ').toLocaleLowerCase('ro').includes(search))&&(!this.incidentML||g.incidents.some(i=>i.mlStatus===this.incidentML)))
+      .sort((a,b)=>Number(b.incidents.some(i=>i.safetyCritical))-Number(a.incidents.some(i=>i.safetyCritical)) || b.severity-a.severity);
+  }
+  statusLabel(status:InterventionStatus){return ({NEW:'Nouă',DISPATCHED:'Echipaj trimis',RESOLVED:'Rezolvată'})[status];}
+  async advanceGroup(group:IncidentGroup){
+    if(this.groupBusy()||!this.canStats()||group.status==='RESOLVED')return;
+    const generation=this.authGeneration;this.groupBusy.set(group.id);this.error.set('');
+    try{
+      await this.api.request('/incident-groups/'+encodeURIComponent(group.id)+'/status',{method:'PATCH',body:JSON.stringify({status:group.status==='NEW'?'DISPATCHED':'RESOLVED'})});
+      if(generation===this.authGeneration){this.notice.set(group.status==='NEW'?'Echipaj trimis pentru întregul grup.':'Avarie rezolvată: toate rapoartele grupului sunt închise.');await this.refresh(true);}
+    }catch(e){if(generation===this.authGeneration)this.fail(e);}
+    finally{if(generation===this.authGeneration)this.groupBusy.set('');}
   }
   async filter() {
     this.filePage.set(0);
@@ -263,6 +344,12 @@ export class WorkspaceStore implements OnDestroy {
     } catch (e) {
       if (generation === this.authGeneration) this.fail(e);
     }
+  }
+  incidentCreated(incident: Incident) {
+    this.incidentPage.set(0);
+    this.incidentSearch = '';
+    this.incidentML = '';
+    this.incidents.update(rows=>[incident,...rows.filter(i=>i.id!==incident.id)].slice(0,25));
   }
   attachTo(incident: Incident) {
     this.uploads.incidentId = incident.id;
@@ -344,7 +431,7 @@ export class WorkspaceStore implements OnDestroy {
     const value = this.policies() as { rules?: { id?: string; category?: string; storage?: string; attachmentType?: string; sensitivity?: string }[] } | null;
     return Array.isArray(value?.rules) ? value.rules : [];
   }
-  private problemMessage(e: unknown) {
+  problemMessage(e: unknown) {
     const x = e as ApiError;
     const message = x.status === 403
       ? "Nu ai permisiunea pentru această operație. " + x.message

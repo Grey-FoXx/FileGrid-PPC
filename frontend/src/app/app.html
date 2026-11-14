@@ -95,8 +95,12 @@
     <main class="main" id="workspace-content" tabindex="-1">
       <header class="topbar">
         <span>OPERAȚIUNI / {{ vm.pageLabel() }}</span>
-        <div>
-          <span class="demo-tag">DEMO ENVIRONMENT</span
+        <div class="demo-controls">
+          @if(vm.demo()?.enabled){
+            <button class="secondary" [disabled]="vm.busy() || vm.demoBusy() || vm.downloads.busy()" (click)="vm.switchDataset()">{{vm.demoView() ? 'Demo · vezi toate datele' : 'Toate datele · deschide demo'}}</button>
+            @if(vm.canManageDemo()) {<button class="primary" [disabled]="vm.busy() || vm.demoBusy() || vm.downloads.busy()" (click)="vm.resetDemo()">{{vm.demoBusy() ? 'Se actualizează demo…' : '↺ Reset demo'}}</button>}
+          }
+          <span class="demo-tag">{{vm.demoView() ? 'DATE DEMO · API REAL' : 'FILEGRID'}}</span
           ><button
             class="icon-button"
             (click)="vm.refresh()"
@@ -138,7 +142,7 @@
         <filegrid-upload />
       }
       @if (vm.tab() === "files") {
-        <filegrid-files />
+        @for(epoch of [vm.datasetEpoch()]; track epoch){<filegrid-files />}
       }
       @if (vm.tab() === "incidents") {
         <filegrid-incidents />

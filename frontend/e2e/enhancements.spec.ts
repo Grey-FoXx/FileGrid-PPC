@@ -198,22 +198,12 @@ test("section error retains earlier measurements and identifies them as stale", 
   await expect(page.getByRole("cell", { name: "2 ms" }).nth(1)).toBeVisible();
 });
 
-test("normal and storm snapshots compare only observed API values", async ({ page }) => {
-  let mode = "NORMAL";
-  const measured = { category: "INCIDENT", storage: "S3", operation: "upload", operations: 2, bytesPerSecond: 2048, operationsPerSecond: 1, p50Ms: 5, p95Ms: 10, p99Ms: 15, errorRate: 0 };
-  await page.route("**/api/v1/stats/business", route => route.fulfill({ json: { files: 2, readings: 2, incidents: 2, mode, recentIncidents: mode === "NORMAL" ? 1 : 30, zones: [] } }));
-  await page.route("**/api/v1/stats/technical", route => route.fulfill({ json: { windowMinutes: 60, series: [{ ...measured, p95Ms: mode === "NORMAL" ? 10 : 80, bytesPerSecond: mode === "NORMAL" ? 2048 : 8192 }] } }));
+test("home no longer exposes the removed in-memory NORMAL/STORM snapshot comparison", async ({ page }) => {
   await signIn(page);
-  await page.getByRole("button", { name: "Salvează instantaneul NORMAL" }).click();
-  mode = "STORM";
-  await page.getByRole("button", { name: "Reîmprospătează" }).click();
-  await expect(page.getByRole("button", { name: "Salvează instantaneul STORM" })).toBeEnabled();
-  await page.getByRole("button", { name: "Salvează instantaneul STORM" }).click();
-  await expect(page.getByRole("region", { name: "Instantanee de performanță" })).toContainText("10 ms");
-  await expect(page.getByRole("region", { name: "Instantanee de performanță" })).toContainText("80 ms");
-  await expect(page.getByRole("region", { name: "Instantanee de performanță" })).toContainText("2.0 KiB/s");
-  await expect(page.getByRole("region", { name: "Instantanee de performanță" })).toContainText("8.0 KiB/s");
-  await expect(page.getByText("ferestrele pot fi suprapuse", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Acasă.", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Instantanee de performanță" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Salvează instantaneul/ })).toHaveCount(0);
+  await expect(page.getByText("NORMAL / STORM: instantanee observate", { exact: false })).toHaveCount(0);
 });
 
 test("incident cards preserve AVAILABLE files for pending and failed ML and show three completed analysis panels", async ({ page }) => {

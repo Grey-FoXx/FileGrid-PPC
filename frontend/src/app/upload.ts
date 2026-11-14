@@ -8,6 +8,7 @@ export interface UploadUser {
 }
 
 export interface SavedUpload {
+  demoScope?: boolean;
   username: string;
   hash: string;
   category: string;
@@ -30,6 +31,7 @@ export interface UploadHost {
   canIncidents(): boolean;
   canDocuments(): boolean;
   refresh(): Promise<void>;
+  incidentCreated?(incident: Incident): void;
   focus(selector: string): void;
   fail(error: unknown): void;
 }
@@ -138,6 +140,7 @@ export class UploadController {
       });
       if (generation !== this.host.generation()) return;
       this.incidentId = result.id;
+      this.host.incidentCreated?.(result);
       this.incidentRequest = null;
       this.host.notice.set(
         "Incident creat. Metadatele sunt disponibile; poți adăuga atașamentul.",
@@ -197,13 +200,13 @@ export class UploadController {
     }
   }
   savedForCurrentUser() {
-    return this.saved().filter(x => x.username === this.host.me()?.username);
+    return this.saved().filter(x => x.username === this.host.me()?.username && (x.demoScope ?? false) === this.host.api.demoScope);
   }
   hasIncident(id: string) {
     return this.host.incidents().some(x => x.id === id);
   }
   restoreUpload(upload: SavedUpload) {
-    if (this.host.busy() || upload.username !== this.host.me()?.username) return;
+    if (this.host.busy() || upload.username !== this.host.me()?.username || (upload.demoScope ?? false) !== this.host.api.demoScope) return;
     try {
       if (upload.category === "CONNECTION_DOCUMENT" ? !this.host.canDocuments() : !this.host.canIncidents())
         throw new Error("Rolul curent nu permite reluarea acestei categorii.");
@@ -379,13 +382,13 @@ export class UploadController {
         throw new Error("Fișierul selectat nu corespunde transferului salvat. Selectează fișierul original sau renunță la selecția sesiunii.");
       const contentType = requested?.contentType || file.type || "application/octet-stream";
       saved = requested || this.saved().find(x =>
-        x.hash === hash && x.category === category && x.username === username &&
+        x.hash === hash && x.category === category && x.username === username && (x.demoScope ?? false) === this.host.api.demoScope &&
         x.contextKey === contextKey && x.filename === file.name &&
         (x.sizeBytes === undefined || x.sizeBytes === file.size) &&
         (x.contentType === undefined || x.contentType === contentType),
       );
       if (!saved) {
-        saved = { username, hash, category, filename: file.name, sizeBytes: file.size,
+        saved = { username, hash, category, demoScope:this.host.api.demoScope, filename: file.name, sizeBytes: file.size,
           contentType, contextKey, idempotencyKey: crypto.randomUUID() };
         this.saveUpload(saved);
       }
@@ -578,6 +581,11 @@ export class UploadController {
         this.controller = null;
       }
     }
+  }
+  clearDemoReferences() {
+    try {
+      localStorage.setItem('filegrid.uploads',JSON.stringify(this.saved().filter(x=>!x.demoScope)));
+    }catch{ /* Server reset remains authoritative if browser storage is unavailable. */ }
   }
   clearSessions() {
     if (this.host.busy()) return;
