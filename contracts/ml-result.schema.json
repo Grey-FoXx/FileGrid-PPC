@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ml-result",
+  "type": "object",
+  "properties": {
+    "priorityScore": {
+      "type": "number"
+    },
+    "priorityClass": {
+      "type": "string"
+    },
+    "clusterId": {
+      "type": "integer"
+    },
+    "clusterSize": {
+      "type": "integer"
+    },
+    "recommendation": {
+      "type": "string"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "modelVersions": {
+      "type": "object"
+    },
+    "synthetic": {
+      "const": true
+    }
+  },
+  "required": [
+    "priorityScore",
+    "priorityClass",
+    "recommendation",
+    "reasons",
+    "modelVersions",
+    "synthetic"
+  ]
+}

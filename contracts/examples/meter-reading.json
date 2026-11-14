@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "reading_id": "MTR-1001-000001",
+  "meter_id": "MTR-1001",
+  "sequence_number": 1,
+  "measured_at": "2026-11-14T10:00:00Z",
+  "energy_kwh": 1542.8
+}

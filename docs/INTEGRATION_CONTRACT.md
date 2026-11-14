@@ -1,0 +1,13 @@
+# Integration
+
+Source of truth: ../contracts/openapi.yaml. Prefix /api/v1. Categories: METER_READING, INCIDENT, CONNECTION_DOCUMENT, DRONE_VIDEO. Storage: DATABASE, S3, FTP. SHA-256 is lowercase hex; sizes bytes; times UTC; IDs UUID.
+
+Basic authentication over HTTPS. UI retains credentials in memory only. GET /me validates them. Idempotency-Key is mandatory for incident/session creation. X-Correlation-ID is returned on all responses. Errors are application/problem+json with code, status, detail, correlationId.
+
+File states: CREATED, UPLOADING, UPLOADED, VERIFYING, AVAILABLE, RETRY_PENDING, FAILED, CANCELLED, CORRUPTED. ML: NOT_REQUESTED, PENDING, RUNNING, COMPLETED, FAILED. Upload complete returns 202; poll file status until AVAILABLE. Never infer ML completion from file availability.
+
+Session POST fields: category, filename, contentType, sizeBytes, sha256, incidentId (incident), applicationId/documentType (connection), attachmentType, sensitivity. Session result: sessionId, fileId, uploadMode (SINGLE/MULTIPART), partSizeBytes, expiresAt.
+
+Small upload: PUT /upload-sessions/{id}/content with application/octet-stream. Multipart: PUT /upload-sessions/{id}/parts/{number} with X-Part-SHA256. GET session returns confirmedParts. POST complete is idempotent. Download response includes X-Content-SHA256. No direct storage links.
+
+Lists return {items,page,size,total}; query page starts at 0, max size 100. Policy changes apply to new sessions after API restart. Frontend uses contract fixtures until the live API is ready.

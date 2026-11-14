@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MeterReading",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "reading_id",
+    "meter_id",
+    "sequence_number",
+    "measured_at",
+    "energy_kwh"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "reading_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "meter_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "measured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "energy_kwh": {
+      "type": "number",
+      "minimum": 0
+    }
+  }
+}

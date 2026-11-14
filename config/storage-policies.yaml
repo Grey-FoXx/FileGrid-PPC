@@ -1,0 +1,19 @@
+version: 1
+rules:
+  - id: meter-database
+    category: METER_READING
+    storage: DATABASE
+  - id: legacy-diagnostic
+    category: INCIDENT
+    attachmentType: LEGACY_LOG
+    sensitivity: NON_SENSITIVE
+    storage: FTP
+  - id: incident-default
+    category: INCIDENT
+    storage: S3
+  - id: connection-private
+    category: CONNECTION_DOCUMENT
+    storage: S3
+  - id: drone-resumable
+    category: DRONE_VIDEO
+    storage: S3

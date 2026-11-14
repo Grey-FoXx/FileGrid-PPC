@@ -1,0 +1,14 @@
+.runtime/
+.env
+**/target/
+**/node_modules/
+**/dist/
+**/.angular/
+**/__pycache__/
+**/.pytest_cache/
+*.pyc
+*.sqlite*
+*.mp4
+*.mkv
+*.log
+.DS_Store
