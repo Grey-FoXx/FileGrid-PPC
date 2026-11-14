@@ -6,7 +6,8 @@
 4. Upload incident PDF: show S3 route and rapid availability.
 5. Upload fictitious connection document: owner can download, other user cannot; storage contains ciphertext.
 6. Upload video in parts, interrupt/retry and verify final SHA-256.
-7. Change policy, restart API, upload a new eligible log and show new routing reason.
+7. Ca ADMIN, schimbă live politica unui log legacy din „Politici de stocare”, fără YAML/restart; creează un upload nou și arată noul storage/versiunea, apoi arată că un fișier existent și-a păstrat decizia inițială.
+8. Pentru cerințele PDF care nu se demonstrează corect doar în UI, folosește matricea din `PDF_REQUIREMENTS_REVIEW.md` și nu prezenta avertismentele locale drept alerte externe sau scenariul Furtună drept benchmark 10×.
 8. Show independent AVAILABLE and ML PENDING/COMPLETED. Stop ML and keep file accessible.
 9. Corrupt a test object and demonstrate failed recovery.
 10. Stop FTP and show meter/S3 functionality. Do not claim PostgreSQL HA or 10x isolation unless separately measured.

@@ -14,12 +14,15 @@ Premise: Linux, Docker Engine accesibil utilizatorului curent, Docker Compose v2
 
 Interfață: **https://localhost:8443**. Acceptă certificatul local generat pentru demonstrație. Conturile sunt generate în `.runtime/accounts.txt`. Parolele, certificatele și cheia AES nu sunt în Git. Nu șterge `.runtime/` dacă păstrezi datele: cheia este necesară decriptării documentelor. Numai gateway-ul publică un port.
 
+Pentru o instanță de verificare izolată, fără ștergerea volumelor existente: `COMPOSE_PROJECT_NAME=filegrid-review FILEGRID_RUNTIME_DIR=.runtime/review FILEGRID_HTTPS_PORT=20443 ./scripts/start.sh`.
+
 **Stare verificată:** build backend/frontend, teste automate și integrare nativă cu PostgreSQL 17, MinIO și FTP reale. **Pornirea completă prin Docker Compose pe o mașină curată nu a fost executată:** utilizatorul curent nu are acces la socket-ul Docker. Validarea YAML Compose nu echivalează cu validarea containerelor. Vezi [rezultatele](docs/VALIDATION.md) și [limitele](docs/LIMITATIONS.md).
 
 ## Fluxuri
 
 - Contoare: JSON original în Database, identități unice, confirmare după commit și retry durabil al simulatorului.
 - Avarii: metadate în PostgreSQL, atașamente în S3; logurile legacy declarate nesensibile merg în FTP conform politicii.
+- Politicile sunt editate live de un utilizator ADMIN în secțiunea „Politici de stocare”. Salvarea este persistentă și se aplică imediat numai sesiunilor noi; nu necesită descărcarea YAML-ului sau restartul API. Fișierele/sesiunile existente păstrează versiunea și motivul inițial.
 - Racordare: AES-256-GCM înainte de stocarea S3; acces per proprietar sau administrator.
 - Drone: multipart de 8 MiB prin API, părți persistente, reluare după restart și SHA-256 complet.
 - ML: Random Forest + DBSCAN + reguli explicabile; disponibilitatea fișierelor rămâne independentă de ML. Date sintetice, fără validare operațională.

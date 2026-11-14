@@ -1,6 +1,6 @@
 name: filegrid
 x-env: &service-env
-  - path: .runtime/services.env
+  - path: ${FILEGRID_RUNTIME_DIR:-.runtime}/services.env
     required: false
 services:
   bootstrap:
@@ -10,7 +10,7 @@ services:
       dockerfile: infra/bootstrap.Dockerfile
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     volumes:
-      - ./.runtime:/runtime
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/runtime
   postgres:
     image: postgres:17.6-bookworm
     env_file: *service-env
@@ -68,7 +68,7 @@ services:
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/filegrid
     volumes:
-      - ./.runtime:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
       - ./config:/config:ro
     networks: [edge, data]
     depends_on:
@@ -84,7 +84,7 @@ services:
     ports:
       - '${FILEGRID_HTTPS_PORT:-8443}:8443'
     volumes:
-      - ./.runtime:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
     networks: [edge]
     depends_on: [api]
     restart: unless-stopped
@@ -97,8 +97,8 @@ services:
       SIMULATOR_METERS: '${SIMULATOR_METERS:-10}'
       SIMULATOR_STATE: /state/pending.sqlite
     volumes:
-      - ./.runtime:/run/filegrid:ro
-      - ./.runtime/simulator:/state
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}/simulator:/state
     networks: [edge]
     depends_on: [api]
     restart: unless-stopped
@@ -110,7 +110,7 @@ services:
       OMP_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
     volumes:
-      - ./.runtime:/run/filegrid:ro
+      - ${FILEGRID_RUNTIME_DIR:-.runtime}:/run/filegrid:ro
     networks: [edge]
     depends_on: [api]
     mem_limit: 512m

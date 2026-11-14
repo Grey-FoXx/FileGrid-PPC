@@ -1,4 +1,4 @@
-import { Component, ElementRef, ViewChild, inject } from "@angular/core";
+import { ChangeDetectorRef, Component, ElementRef, ViewChild, inject } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { WorkspaceStore } from "../workspace";
@@ -37,6 +37,7 @@ interface PolicyConfiguration { version: number | string; rules: PolicyRule[]; [
 export class PoliciesPage {
   @ViewChild("policyDialog") private policyDialog?: ElementRef<HTMLDialogElement>;
   readonly vm = inject(WorkspaceStore);
+  private readonly changes = inject(ChangeDetectorRef);
   readonly categories = [
     { key: "METER_READING", label: "Citiri contoare", note: "Ingestie automată, identitate unică și confirmare după commit." },
     { key: "INCIDENT", label: "Avarii", note: "S3 pentru atașamente obișnuite; FTP este permis doar pentru loguri legacy nesensibile." },
@@ -128,7 +129,10 @@ export class PoliciesPage {
       this.selectRule();
       this.applied='Politica v'+config.version+' este activă. Se aplică sesiunilor noi; fișierele și transferurile deja create își păstrează destinația și versiunea.';
     }catch(e){if(generation===this.vm.generation())this.error=this.vm.problemMessage(e);}
-    finally{if(generation===this.vm.generation())this.saving=false;}
+    finally{
+      if(generation===this.vm.generation())this.saving=false;
+      this.changes.markForCheck();
+    }
   }
   async reloadDraft(){
     if(this.saving)return;

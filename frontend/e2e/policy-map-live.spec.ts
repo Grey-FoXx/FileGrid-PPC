@@ -112,7 +112,7 @@ test("admin live policy save updates active config without download while old fi
   await expect(page.locator(".page-heading")).toContainText("POLICY v5");
   expect(downloadCount).toBe(0);
   await expect(dialog).not.toContainText("docker compose");
-  await dialog.getByRole("button", { name: "Închide" }).click();
+  await dialog.getByRole("button", { name: "Închide", exact: true }).click();
 
   await page.getByRole("button", { name: "▤ Fișiere", exact: true }).click();
   const row = page.getByRole("region", { name: "Tabel de date" }).getByRole("row", { name: /old-route-log/ });
@@ -176,8 +176,8 @@ test("coincident backend groups stay separate, show full counts, and remain keyb
   await expect(second).toBeVisible();
   await expect(first).toHaveAttribute("aria-label", /7 rapoarte/);
   await expect(second).toHaveAttribute("aria-label", /2 rapoarte/);
-  expect(await first.getAttribute("data-source-x")).toBe(await second.getAttribute("data-source-x"));
-  expect(await first.getAttribute("data-source-y")).toBe(await second.getAttribute("data-source-y"));
+  expect(Number(await first.getAttribute("data-source-x"))).toBeCloseTo(Number(await second.getAttribute("data-source-x")), 8);
+  expect(Number(await first.getAttribute("data-source-y"))).toBeCloseTo(Number(await second.getAttribute("data-source-y")), 8);
   expect(await first.getAttribute("transform")).not.toBe(await second.getAttribute("transform"));
 
   await first.focus();
@@ -187,6 +187,30 @@ test("coincident backend groups stay separate, show full counts, and remain keyb
   await page.keyboard.press("Enter");
   await expect(page.locator(".map-info")).toContainText("BT-group-two-1");
   await expect(page.locator(".map-info")).not.toContainText("BT-group-seven-1");
+});
+
+test("dense incident zones keep every visual marker inside Romania and near its real coordinate", async ({ page }) => {
+  const coordinates = { latitude: 45.75, longitude: 21.23 };
+  const groups = Array.from({ length: 77 }, (_, index) => group(`dense-${index + 1}`, 1, coordinates));
+  installBaseApi(page, { groups: () => groups });
+  await login(page);
+  await page.locator("nav button").filter({ hasText: "Dispecerat" }).click();
+
+  const markers = page.locator(".map-marker");
+  await expect(markers).toHaveCount(77);
+  const layout = await markers.evaluateAll(elements => {
+    const outline = document.querySelector("#romania-clip path") as SVGGeometryElement;
+    return elements.map(element => {
+      const transform = element.getAttribute("transform") || "";
+      const match = transform.match(/translate\(([-\d.]+) ([-\d.]+)\)/);
+      const x = Number(match?.[1]), y = Number(match?.[2]);
+      const sourceX = Number(element.getAttribute("data-source-x"));
+      const sourceY = Number(element.getAttribute("data-source-y"));
+      return { inside: outline.isPointInFill(new DOMPoint(x, y)), distance: Math.hypot(x - sourceX, y - sourceY) };
+    });
+  });
+  expect(layout.every(marker => marker.inside)).toBe(true);
+  expect(Math.max(...layout.map(marker => marker.distance))).toBeLessThanOrEqual(140);
 });
 
 test("new report arrival animates only into its backend group and updates that marker count", async ({ page }) => {
@@ -255,11 +279,5 @@ test("incoming report animation respects reduced-motion preference", async ({ pa
   await page.getByRole("button", { name: "+ Creează incident" }).click();
   await expect(page.getByRole("status")).toContainText("Incident creat");
   await page.locator("nav button").filter({ hasText: "Dispecerat" }).click();
-  const arrival = page.locator('.report-arrival[data-report-id="reduced-member"]');
-  await expect(arrival).toBeVisible();
-  const motion = await arrival.evaluate(element => ({
-    name: getComputedStyle(element).animationName,
-    duration: getComputedStyle(element).animationDuration,
-  }));
-  expect(motion.name === "none" || motion.duration.split(",").every(value => value.trim() === "0s")).toBe(true);
+  await expect(page.locator('.report-arrival[data-report-id="reduced-member"]')).toHaveCount(0);
 });

@@ -25,7 +25,7 @@ interface Arrival {id:string; groupId:string; x:number; y:number; sourceX:number
  <title>{{label(m)}} · {{m.rows[0].eventType}}</title></g>
  }
  @for(a of arrivals();track a.id){
- <g class="report-arrival" [attr.data-report-id]="a.id" [attr.data-target-group]="a.groupId" [style.--from-x]="a.x+'px'" [style.--from-y]="a.y+'px'" [style.--to-x]="a.targetX+'px'" [style.--to-y]="a.targetY+'px'" aria-hidden="true"><circle r="6" [attr.fill]="color(a.severity)" stroke="white" stroke-width="2"/></g>
+ <g class="report-arrival" [attr.data-report-id]="a.id" [attr.data-target-group-id]="a.groupId" [style.--from-x]="a.x+'px'" [style.--from-y]="a.y+'px'" [style.--to-x]="a.targetX+'px'" [style.--to-y]="a.targetY+'px'" aria-hidden="true"><circle r="6" [attr.fill]="color(a.severity)" stroke="white" stroke-width="2"/></g>
  }
  </svg><aside class="map-info">
  <h3>Semnale din teren</h3><p><span class="severity-dot yellow"></span> Severitate 1–2</p><p><span class="severity-dot orange"></span> Severitate 3</p><p><span class="severity-dot red"></span> Severitate 4–5</p>

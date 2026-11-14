@@ -1,4 +1,12 @@
-# FRONTEND handoff — 2026-11-14
+# FRONTEND handoff and revisions
+
+## Policy/map correction — 2026-11-15
+
+The older PPC notes below that describe policy download/manual YAML replacement are historical and superseded. On `feature/demo-command-center`, policies are now saved through the versioned backend API and applied immediately to new sessions; there is no YAML download or API restart in the active UI. A rejected/stale save keeps the draft and reliably renders the conflict.
+
+Dense report groups now use adaptive, bounded placement constrained to the actual Romania polygon. When the map is saturated, markers may overlap rather than being displaced outside the country. Focused Playwright coverage passes 7/7, including 77 coincident groups inside Romania with maximum 140 px displacement, keyboard behavior, correct arrival target and reduced motion. Clean isolated one-command Compose startup is now verified by BACKEND at `https://localhost:20443`; external business-alert delivery and the 10× benchmark remain open.
+
+# Historical frontend handoff — 2026-11-14
 
 Checkpoint branch: develop; obtain its SHA with git rev-parse HEAD and match it on both machines.
 

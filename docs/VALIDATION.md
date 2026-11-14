@@ -1,4 +1,29 @@
-# Verification checkpoint — 2026-11-14
+# Verification record
+
+## Compose and live-policy review — 2026-11-15
+
+Isolated project: `filegrid-review-ready`, runtime directory `.runtime/review`, URL `https://localhost:20443`. No pre-existing volume was deleted.
+
+| Check | Result | Boundary |
+|---|---|---|
+| `scripts/start.sh` | PASS | One command built/bootstraped the isolated project and returned Ready only after HTTPS gateway and current API health passed |
+| Compose services | PASS | PostgreSQL, MinIO, FTP/vsftpd, API, gateway/Angular, meter simulator, ML worker and Prometheus are running; storage-init exited 0 |
+| Compose smoke | PASS | All four categories; DATABASE, FTP and S3; exact downloaded bytes/SHA-256; meter replay/conflict; second document owner denied; ML completed asynchronously |
+| Live policy update | PASS | Existing legacy file remained FTP/v1; new file became S3/v2 without restart; defaults restored as v3; API restart retained the persisted configuration |
+| API restart/data volumes | PASS | API health returned after restart with the same PostgreSQL/MinIO/FTP volumes and previously completed smoke data still present |
+| Focused browser policy/map suite | PASS: 7/7 | Live save/conflict/role behavior; coincident groups; 77 dense groups remain inside Romania and within 140 px; arrival target; reduced motion |
+| Angular production build | PASS | Production bundle built before Compose image creation and independently during this review |
+| Maven clean test | PASS: 7/7 | 4 API integration + 3 integrity/policy tests; embedded PostgreSQL migrations v1–v3 |
+| Simulator unittest | PASS: 2/2 | Stable sequence/original bytes and rejected-event retention |
+| ML unittest | PASS: 4/4 | Spatial/temporal members, missing coordinates, safety override |
+
+Corrections made from evidence: runtime paths are parameterized by `FILEGRID_RUNTIME_DIR`; the readiness probe uses IPv4 and checks the live API with `curl`; the API runtime image now contains `curl`. The map uses the actual Romania polygon and a bounded adaptive layout rather than only a rectangular bounding box.
+
+Persistence was rechecked with the simulator temporarily stopped: after restarting PostgreSQL, MinIO, FTP, API, gateway, ML and Prometheus, a pre-existing file ID still existed, the file count had not decreased, and policy version v3 was unchanged. The simulator was then resumed. An earlier strict count comparison across a full restart was discarded because restarting the simulator legitimately creates new readings.
+
+Not newly certified in this run: 10× cross-category isolation, two-instance scaling, external automatic alerts, 200 ms/2% network impairment, PostgreSQL HA/backup restore, and a >1 GB Compose transfer. The historical 1229 MiB native result below remains valid evidence for streaming but was not repeated because only approximately 2.5 GiB was free locally. See `PDF_REQUIREMENTS_REVIEW.md`.
+
+## Native checkpoint — 2026-11-14
 
 ## Automated checks
 
@@ -45,7 +70,7 @@ Actual upload, verification and streamed recovery:
 
 This is a bounded-memory transport demonstration using synthetic bytes, not a codec test, generalized throughput benchmark, or validation of Docker memory limits.
 
-## Not verified
+## Not verified at the 2026-11-14 checkpoint
 
 Clean Docker startup, container-level TLS/permissions/health checks, the vsftpd image, GitHub Actions execution, 10x category isolation, horizontal-scale throughput gain, degraded network campaign, PostgreSQL HA, backup restore, automatic alerts and complete audit coverage.
 
