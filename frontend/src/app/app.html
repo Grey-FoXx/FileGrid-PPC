@@ -3,7 +3,7 @@
     <section class="login-brand">
       <div class="brand-mark">ϟ</div>
       <span class="eyebrow">FILEGRID / PPC</span>
-      <h1>Datele rețelei.<br />Într-un singur loc.</h1>
+      <h1 tabindex="-1">Datele rețelei.<br />Într-un singur loc.</h1>
       <p>
         De la citirea unui contor la inspecția unei linii electrice. Stocare
         sigură, transfer fiabil, integritate verificabilă.
@@ -32,7 +32,7 @@
           required
       /></label>
       @if (error()) {
-        <p class="alert error" role="alert">{{ error() }}</p>
+        <p class="alert error" role="alert" tabindex="-1" data-error-summary>{{ error() }}</p>
       }
       <button class="primary" [disabled]="busy()">
         {{ busy() ? "Se verifică…" : "Intră în platformă →" }}</button
@@ -43,6 +43,7 @@
     </form>
   </main>
 } @else {
+  <a class="skip-link" href="#workspace-content" (click)="$event.preventDefault(); focus('#workspace-content')">Sari la conținut</a>
   <div class="app-shell">
     <aside class="sidebar">
       <a
@@ -61,7 +62,7 @@
             (canStats() || !["dashboard", "meters"].includes(item[0])) &&
             (item[0] !== "incidents" || canIncidents())
           ) {
-            <button [class.active]="tab() === item[0]" (click)="go(item[0])">
+            <button [class.active]="tab() === item[0]" [attr.aria-current]="tab() === item[0] ? 'page' : null" [title]="item[2]" (click)="go(item[0])">
               <span>{{ item[1] }}</span
               >{{ item[2] }}
               @if (item[0] === "incidents" && business()?.mode === "STORM") {
@@ -91,7 +92,7 @@
         </div>
       </div>
     </aside>
-    <main class="main">
+    <main class="main" id="workspace-content" tabindex="-1">
       <header class="topbar">
         <span
           >OPERAȚIUNI /
@@ -115,7 +116,7 @@
         </div>
       </header>
       @if (error()) {
-        <div class="alert error" role="alert">
+        <div class="alert error" role="alert" tabindex="-1" data-error-summary>
           {{ error()
           }}<button (click)="error.set('')" aria-label="Închide">×</button>
         </div>
@@ -126,17 +127,30 @@
           }}<button (click)="notice.set('')" aria-label="Închide">×</button>
         </div>
       }
+      @if (downloads.state(); as download) {
+        <section class="download-progress panel" aria-label="Descărcare curentă">
+          <strong>{{ download.filename }}</strong>
+          <p aria-live="polite">{{ download.label }}</p>
+          <progress aria-label="Progres descărcare" [value]="download.received" [max]="download.total || 1"></progress>
+          <small>{{ bytes(download.received) }} / {{ bytes(download.total) }}</small>
+          @if (downloads.busy()) { <button class="secondary" (click)="downloads.cancel()">Anulează descărcarea</button> }
+        </section>
+      }
+      @if (!downloads.supportsStreaming()) {
+        <p id="download-capability" class="footnote">Acest browser permite descărcări până la 128 MiB. Pentru fișiere mai mari folosește Chrome/Edge cu salvare streaming.</p>
+      }
       @if (tab() === "dashboard") {
         <section class="page-heading">
           <div>
             <span class="eyebrow">CONTROL ȘI VIZIBILITATE</span>
-            <h1>Rețeaua, în perspectivă.</h1>
+            <h1 tabindex="-1">Rețeaua, în perspectivă.</h1>
             <p>Monitorizează fluxurile de date și incidentele din teren.</p>
           </div>
           <button class="primary" (click)="go('upload')">
             + Încarcă fișier
           </button>
         </section>
+        <filegrid-section-state [state]="states()['business']" label="statisticile de business" (retry)="refresh()" />
         <div class="stat-grid">
           <article class="stat">
             <span>Fișiere înregistrate</span
@@ -161,7 +175,7 @@
             ><strong [class.orange]="business()?.mode === 'STORM'">{{
               business()?.mode ?? "—"
             }}</strong
-            ><small>Prag furtună: 20 incidente / 5 min</small>
+            ><small>Mod stabilit de server din volumul recent</small>
           </article>
         </div>
         <div class="dashboard-columns">
@@ -232,15 +246,18 @@
               <span class="eyebrow">PERFORMANȚĂ MĂSURATĂ</span>
               <h2>Transferuri și latență</h2>
             </div>
-            <small>Fereastră: ultima oră · valori reale</small>
+            <small>Fereastră: {{ windowMinutes() === null ? 'nespecificată' : windowMinutes() + ' minute' }} · valori măsurate</small>
           </div>
-          <div class="table-wrap">
+          <filegrid-section-state [state]="states()['technical']" label="metricile tehnice" (retry)="refresh()" />
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Metrici pe categorie și storage">
             <table>
               <thead>
                 <tr>
                   <th>Categorie / operație</th>
                   <th>Storage</th>
                   <th>Operații</th>
+                  <th>Transfer / secundă</th>
+                  <th>Operații / secundă</th>
                   <th>p50</th>
                   <th>p95</th>
                   <th>p99</th>
@@ -255,6 +272,8 @@
                     </td>
                     <td>{{ s.storage }}</td>
                     <td>{{ s.operations }}</td>
+                    <td>{{ bytes(s.bytesPerSecond) }}/s</td>
+                    <td>{{ s.operationsPerSecond | number: "1.0-3" }}</td>
                     <td>{{ s.p50Ms | number: "1.0-1" }} ms</td>
                     <td>{{ s.p95Ms | number: "1.0-1" }} ms</td>
                     <td>{{ s.p99Ms | number: "1.0-1" }} ms</td>
@@ -262,9 +281,10 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td colspan="7" class="empty">
-                      Metricile apar după primele operații. Nu sunt generate
-                      valori demonstrative.
+                    <td colspan="9" class="empty">
+                      @if (states()['technical']?.loading) { Se încarcă metricile… }
+                      @else if (states()['technical']?.error) { Metricile sunt indisponibile momentan. }
+                      @else { Metricile apar după primele operații. Nu sunt generate valori demonstrative. }
                     </td>
                   </tr>
                 }
@@ -272,12 +292,36 @@
             </table>
           </div>
         </section>
+        <section class="panel" aria-label="Avarii pe zone">
+          <h2>Zone cu avarii</h2>
+          <p>Total înregistrat, independent de pagina de incidente deschisă.</p>
+          <ul class="zone-list">
+            @for (zone of business()?.zones || []; track zone.zone) {
+              <li><strong>{{ zone.zone }}</strong><span>{{ zone.incidents }} incidente</span></li>
+            } @empty { <li>{{ states()['business']?.error ? 'Date indisponibile.' : 'Nu există date pe zone.' }}</li> }
+          </ul>
+        </section>
+        <section class="panel" aria-label="Comparație normal și furtună">
+          <h2>Normal / Storm: instantanee observate</h2>
+          <p>Salvează valorile curente în fiecare mod. Instantaneele sunt păstrate doar în această sesiune; ferestrele pot fi suprapuse. Nu reprezintă o comparație istorică pe zile.</p>
+          <button class="secondary" (click)="captureSnapshot()" [disabled]="!business() || states()['technical']?.loading || !!states()['technical']?.error || states()['business']?.loading || !!states()['business']?.error">Salvează instantaneul {{ business()?.mode || 'curent' }}</button>
+          <p>NORMAL: {{ snapshots()['NORMAL'] ? (snapshots()['NORMAL'].at | date:'HH:mm:ss') : 'necapturat' }} (fereastră {{ snapshots()['NORMAL']?.window ?? '—' }} min) · STORM: {{ snapshots()['STORM'] ? (snapshots()['STORM'].at | date:'HH:mm:ss') : 'necapturat' }} (fereastră {{ snapshots()['STORM']?.window ?? '—' }} min)</p>
+          @if (snapshots()['NORMAL'] && snapshots()['STORM']) {
+            <div class="table-wrap" tabindex="0" role="region" aria-label="Instantanee de performanță">
+              <table><thead><tr><th>Categorie / storage / operație</th><th>p95 NORMAL</th><th>p95 STORM</th><th>B/s NORMAL</th><th>B/s STORM</th><th>Erori NORMAL</th><th>Erori STORM</th></tr></thead>
+                <tbody>@for (row of comparisonRows(); track row.key) {
+                  <tr><td>{{ row.key }}</td><td>{{ row.normal ? (row.normal.p95Ms | number:'1.0-1') + ' ms' : '—' }}</td><td>{{ row.storm ? (row.storm.p95Ms | number:'1.0-1') + ' ms' : '—' }}</td><td>{{ row.normal ? bytes(row.normal.bytesPerSecond) + '/s' : '—' }}</td><td>{{ row.storm ? bytes(row.storm.bytesPerSecond) + '/s' : '—' }}</td><td>{{ row.normal ? (row.normal.errorRate * 100 | number:'1.0-1') + '%' : '—' }}</td><td>{{ row.storm ? (row.storm.errorRate * 100 | number:'1.0-1') + '%' : '—' }}</td></tr>
+                } @empty { <tr><td colspan="7">Instantaneele nu conțin operații măsurate.</td></tr> }</tbody>
+              </table>
+            </div>
+          }
+        </section>
       }
       @if (tab() === "upload") {
         <section class="page-heading">
           <div>
             <span class="eyebrow">INGESTIE MANUALĂ</span>
-            <h1>Încarcă date din teren.</h1>
+            <h1 tabindex="-1">Încarcă date din teren.</h1>
             <p>Politica alege destinația. FileGrid verifică integritatea.</p>
           </div>
         </section>
@@ -285,7 +329,7 @@
           <section class="panel">
             <h2>Detalii transfer</h2>
             @if (savedForCurrentUser().length && !busy()) {
-              <div class="callout">
+              <div class="callout session-list">
                 <p>Transferuri salvate: restaurează contextul, apoi selectează fișierul original.</p>
                 @for (upload of savedForCurrentUser(); track upload.sessionId || upload.idempotencyKey) {
                   <button class="text-button" (click)="restoreUpload(upload)">
@@ -352,11 +396,11 @@
             @if (category === "CONNECTION_DOCUMENT") {
               <div class="form-row">
                 <label
-                  >ID cerere<input
+                  >ID cerere<input id="application-id" required
                     [(ngModel)]="applicationId"
                     [disabled]="busy() || !!recovery() || !!requestedResume()" /></label
                 ><label
-                  >Tip document<input
+                  >Tip document<input id="document-type" required
                     [(ngModel)]="documentType"
                     [disabled]="busy() || !!recovery() || !!requestedResume()"
                 /></label>
@@ -385,15 +429,16 @@
               }}</small
               ><input
                 type="file"
+                aria-label="Fișier pentru transfer"
                 (change)="selectFile($event)"
                 [disabled]="busy()"
             /></label>
             @if (uploadLabel()) {
-              <div class="progress-label">
+              <div class="progress-label" aria-live="polite">
                 <span>{{ uploadLabel() }}</span
                 ><strong>{{ progress() }}%</strong>
               </div>
-              <progress [value]="progress()" max="100"></progress>
+              <progress aria-label="Progres încărcare" [attr.aria-valuetext]="uploadLabel()" [value]="progress()" max="100"></progress>
             }
             @if (checksum()) {
               <div class="hash">
@@ -441,21 +486,27 @@
               <h2>Creează un incident</h2>
               <p>Metadatele devin vizibile înainte de analiza atașamentului.</p>
               <div class="form-row">
-                <label>Stație<input [(ngModel)]="stationId" /></label
-                ><label>Zonă<input [(ngModel)]="zone" /></label>
+                <label>Stație<input id="station-id" required [(ngModel)]="stationId" /></label
+                ><label>Zonă<input id="incident-zone" required [(ngModel)]="zone" /></label>
               </div>
-              <label>Tip eveniment<input [(ngModel)]="eventType" /></label>
+              <label>Tip eveniment<input id="event-type" required [(ngModel)]="eventType" /></label>
               <div class="form-row">
                 <label
                   >Severitate (1–5)<input
                     type="number"
+                    id="severity"
+                    required
+                    step="1"
                     min="1"
                     max="5"
                     [(ngModel)]="severity" /></label
                 ><label
                   >Clienți afectați<input
                     type="number"
+                    id="affected-customers"
+                    required
                     min="0"
+                    step="1"
                     [(ngModel)]="affectedCustomers"
                 /></label>
               </div>
@@ -463,9 +514,10 @@
                 <label
                   >Latitudine<input
                     type="number"
+                    id="latitude" min="-90" max="90" step="any" required
                     [(ngModel)]="latitude" /></label
                 ><label
-                  >Longitudine<input type="number" [(ngModel)]="longitude"
+                  >Longitudine<input type="number" id="longitude" min="-180" max="180" step="any" required [(ngModel)]="longitude"
                 /></label>
               </div>
               <label class="checkbox"
@@ -486,7 +538,7 @@
         <section class="page-heading">
           <div>
             <span class="eyebrow">CATALOG VERIFICABIL</span>
-            <h1>Fișierele rețelei.</h1>
+            <h1 tabindex="-1">Fișierele rețelei.</h1>
             <p>{{ fileTotal() }} fișiere accesibile contului tău.</p>
           </div>
           <button class="primary" (click)="go('upload')">
@@ -494,6 +546,7 @@
           </button>
         </section>
         <section class="panel">
+          <filegrid-section-state [state]="states()['files']" label="fișierele" (retry)="refresh()" />
           <div class="filters">
             <input
               aria-label="Caută după nume"
@@ -506,20 +559,17 @@
               (change)="filter()"
             >
               <option value="">Toate categoriile</option>
-              @for (
-                c of [
-                  "METER_READING",
-                  "INCIDENT",
-                  "CONNECTION_DOCUMENT",
-                  "DRONE_VIDEO",
-                ];
-                track c
-              ) {
+              @for (c of fileCategories(); track c) {
                 <option [value]="c">{{ labels[c] }}</option>
               }</select
-            ><button class="secondary" (click)="filter()">Caută</button>
+            ><select aria-label="Filtru stare" [(ngModel)]="statusFilter" (change)="filter()">
+              <option value="">Toate stările</option>
+              @for (status of ['CREATED','UPLOADING','UPLOADED','VERIFYING','AVAILABLE','RETRY_PENDING','FAILED','CANCELLED','CORRUPTED']; track status) {
+                <option [value]="status">{{ status }}</option>
+              }
+            </select><button class="secondary" (click)="filter()">Caută</button>
           </div>
-          <div class="table-wrap">
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Tabel de date">
             <table>
               <thead>
                 <tr>
@@ -557,11 +607,11 @@
                       >
                     </td>
                     <td class="row-actions">
-                      <button class="text-button" (click)="selectedFile.set(f)">
+                      <button class="text-button" (click)="openDetails(f, $event)">
                         Detalii</button
                       ><button
                         class="text-button"
-                        [disabled]="f.status !== 'AVAILABLE'"
+                        [disabled]="f.status !== 'AVAILABLE' || downloads.busy() || !downloads.allowed(f)" [attr.aria-describedby]="!downloads.allowed(f) ? 'download-capability' : null"
                         (click)="download(f)"
                       >
                         ↓ Descarcă
@@ -571,8 +621,9 @@
                 } @empty {
                   <tr>
                     <td colspan="6" class="empty">
-                      Nu există fișiere pentru această selecție. Încarcă primul
-                      fișier sau schimbă filtrul.
+                      @if (states()['files']?.loading) { Se încarcă fișierele… }
+                      @else if (states()['files']?.error) { Fișierele sunt indisponibile momentan. }
+                      @else { Nu există fișiere pentru această selecție. Încarcă primul fișier sau schimbă filtrul. }
                     </td>
                   </tr>
                 }
@@ -597,12 +648,12 @@
           </div>
         </section>
         @if (selectedFile(); as f) {
-          <section class="panel details">
+          <section class="panel details" aria-labelledby="file-details-heading" (keydown.escape)="closeDetails()">
             <div class="panel-heading">
-              <h2>{{ f.filename }}</h2>
+              <h2 id="file-details-heading" tabindex="-1">{{ f.filename }}</h2>
               <button
                 class="icon-button"
-                (click)="selectedFile.set(null)"
+                (click)="closeDetails()"
                 aria-label="Închide detalii"
               >
                 ×
@@ -627,7 +678,7 @@
         <section class="page-heading">
           <div>
             <span class="eyebrow">STORM INTELLIGENCE</span>
-            <h1>Dispecerat.</h1>
+            <h1 tabindex="-1">Dispecerat.</h1>
             <p>
               Fișiere disponibile independent de analiza ML. Modelele folosesc
               date sintetice.
@@ -637,8 +688,22 @@
             + Raportează avarie
           </button>
         </section>
+        <filegrid-section-state [state]="states()['incidents']" label="incidentele" (retry)="refresh()" />
+        @if (canStats()) {
+          <filegrid-section-state [state]="states()['business']" label="modul operațional" (retry)="refresh()" />
+          <div class="mode-banner" [class.storm]="business()?.mode === 'STORM'">
+            <strong>{{ business()?.mode || 'Mod indisponibil' }}</strong>
+            <span>{{ business()?.recentIncidents ?? '—' }} incidente în ultimele 5 minute. {{ business()?.mode === 'STORM' ? 'Accent pe priorități și zone afectate.' : 'Accent pe incidente individuale.' }}</span>
+          </div>
+        }
+        <div class="incident-filters filters">
+          <input aria-label="Caută incidente în pagina curentă" placeholder="Stație, zonă, eveniment…" [(ngModel)]="incidentSearch" />
+          <select aria-label="Filtru analiză ML" [(ngModel)]="incidentML"><option value="">Toate stările ML</option>@for (status of ['NOT_REQUESTED','PENDING','RUNNING','COMPLETED','FAILED']; track status) { <option [value]="status">{{ status }}</option> }</select>
+          <select aria-label="Ordonează incidentele" [(ngModel)]="incidentSort"><option value="auto">Ordine adaptată modului</option><option value="reported">Cele mai recente</option><option value="priority">Prioritate</option></select>
+        </div>
+        <p class="footnote">{{ incidentTotal() }} incidente accesibile · filtrele și ordonarea se aplică paginii curente.</p>
         <div class="incident-grid">
-          @for (i of incidents(); track i.id) {
+          @for (i of visibleIncidents(); track i.id) {
             <article class="panel incident-card">
               <div class="panel-heading">
                 <span class="badge" [class.bad]="i.severity >= 4"
@@ -662,7 +727,8 @@
                   ><button
                     class="text-button"
                     (click)="download(f)"
-                    [disabled]="f.status !== 'AVAILABLE'"
+                    [attr.aria-label]="'Descarcă ' + f.filename"
+                    [disabled]="f.status !== 'AVAILABLE' || downloads.busy() || !downloads.allowed(f)" [attr.aria-describedby]="!downloads.allowed(f) ? 'download-capability' : null"
                   >
                     ↓
                   </button>
@@ -677,43 +743,48 @@
                 >
               </div>
               @if (i.analysis; as a) {
-                <div class="recommendation">
-                  <span class="eyebrow">RECOMANDARE</span>
-                  <h3>{{ a.recommendation }}</h3>
-                  <p>
-                    Scor prioritate {{ a.priorityScore | number: "1.0-0" }} /
-                    100 · grup de {{ a.clusterSize }} incidente
-                  </p>
-                  <ul>
-                    @for (reason of a.reasons; track reason) {
-                      <li>{{ reason }}</li>
-                    }
-                  </ul>
-                  <small>Modele sintetice · {{ a.priorityClass }}</small>
+                <div class="model-grid">
+                  <section class="model-result"><h3>Model 1 · Impact și urgență</h3>
+                    <p>Scor {{ a.priorityScore | number:'1.0-1' }} / 100 · {{ a.priorityClass }}</p>
+                    <small>Random Forest · {{ a.modelVersions?.['impact'] || 'versiune neprecizată' }}</small>
+                  </section>
+                  <section class="model-result"><h3>Model 2 · Corelare incidente</h3>
+                    <p>{{ a.clusterSize ?? '—' }} incidente în grup · etichetă locală {{ a.clusterId ?? '—' }}</p>
+                    <small>DBSCAN · {{ a.modelVersions?.['correlation'] || 'versiune neprecizată' }}</small>
+                    <p>Eticheta este locală acestei analize. Apropierea nu demonstrează o cauză comună.</p>
+                  </section>
                 </div>
-              } @else {
-                <p class="muted">
-                  Analiza asincronă apare după verificarea primului atașament.
-                  Accesul la fișiere rămâne independent.
-                </p>
-              }
+                <section class="recommendation"><span class="eyebrow">DECISION AGENT</span>
+                  <h3>{{ decisionLabel(a.recommendation) }}</h3><code>{{ a.recommendation }}</code>
+                  <ul>@for (reason of a.reasons; track $index) { <li>{{ reason }}</li> }</ul>
+                  <small>Politică: {{ a.policyVersion || 'neprecizată' }} · {{ a.timestamp ? (a.timestamp | date:'dd MMM HH:mm:ss') : 'moment neprecizat' }}</small>
+                  <p>{{ a.synthetic ? 'Modele sintetice · demonstrație a pipeline-ului.' : 'Rezultate furnizate de API.' }} Recomandare pentru evaluare umană.</p>
+                </section>
+              } @else { <p class="muted">{{ mlMessage(i.mlStatus) }} Accesul la fișiere rămâne independent.</p> }
               <button class="text-button" (click)="attachTo(i)">
                 + Adaugă atașament →
               </button>
             </article>
           } @empty {
             <section class="panel empty">
-              Niciun incident raportat. Creează primul incident din formularul
-              de upload.
+              @if (states()['incidents']?.loading) { Se încarcă incidentele… }
+              @else if (states()['incidents']?.error) { Incidentele sunt indisponibile momentan. }
+              @else if (incidents().length) { Niciun incident corespunde filtrelor din această pagină. }
+              @else { Niciun incident raportat. Creează primul incident din formularul de upload. }
             </section>
           }
+        </div>
+        <div class="pagination" aria-label="Paginare incidente">
+          <button class="secondary" [disabled]="incidentPage() === 0" (click)="pageList('incidents', -1)">← Incidente anterioare</button>
+          <span>Pagina {{ incidentPage() + 1 }}</span>
+          <button class="secondary" [disabled]="(incidentPage() + 1) * 25 >= incidentTotal()" (click)="pageList('incidents', 1)">Incidente următoare →</button>
         </div>
       }
       @if (tab() === "meters") {
         <section class="page-heading">
           <div>
             <span class="eyebrow">INGESTIE AUTOMATĂ</span>
-            <h1>Citiri fără duplicări.</h1>
+            <h1 tabindex="-1">Citiri fără duplicări.</h1>
             <p>
               Simulator continuu · identificatori stabili · confirmare după
               commit.
@@ -722,7 +793,10 @@
           <span class="badge teal">DATABASE</span>
         </section>
         <section class="panel">
-          <div class="table-wrap">
+          <filegrid-section-state [state]="states()['meters']" label="citirile" (retry)="refresh()" />
+          <div class="filters"><input aria-label="ID contor" placeholder="ID contor" [(ngModel)]="meterFilter" (keyup.enter)="filterMeters()" /><button class="secondary" (click)="filterMeters()">Filtrează citirile</button></div>
+          <p>{{ meterTotal() }} citiri accesibile</p>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Tabel de date">
             <table>
               <thead>
                 <tr>
@@ -743,7 +817,7 @@
                     <td>{{ m.energyKwh }} kWh</td>
                     <td>{{ m.measuredAt | date: "dd MMM HH:mm:ss" }}</td>
                     <td>
-                      <button class="text-button" (click)="downloadReading(m)">
+                      <button class="text-button" (click)="downloadReading(m)" [disabled]="downloads.busy()" [attr.aria-label]="'Descarcă JSON pentru citirea ' + m.readingId">
                         ↓ JSON
                       </button>
                     </td>
@@ -751,13 +825,14 @@
                 } @empty {
                   <tr>
                     <td colspan="6" class="empty">
-                      Așteptăm primele citiri de la simulator.
+                      {{ states()['meters']?.loading ? 'Se încarcă citirile…' : states()['meters']?.error ? 'Citirile sunt indisponibile momentan.' : 'Nu există citiri pentru această selecție. Așteptăm primele citiri de la simulator.' }}
                     </td>
                   </tr>
                 }
               </tbody>
             </table>
           </div>
+          <div class="pagination" aria-label="Paginare citiri"><button class="secondary" [disabled]="meterPage() === 0" (click)="pageList('meters', -1)">← Citiri anterioare</button><span>Pagina {{ meterPage() + 1 }}</span><button class="secondary" [disabled]="(meterPage() + 1) * 25 >= meterTotal()" (click)="pageList('meters', 1)">Citiri următoare →</button></div>
         </section>
         <p class="footnote">
           Rata simulatorului se configurează prin SIMULATOR_RATE și
@@ -768,17 +843,21 @@
         <section class="page-heading">
           <div>
             <span class="eyebrow">ROUTING EXPLICABIL</span>
-            <h1>Politici de stocare.</h1>
+            <h1 tabindex="-1">Politici de stocare.</h1>
             <p>Reguli deterministe, configurabile fără modificarea codului.</p>
           </div>
         </section>
         <section class="panel">
           <h2>Configurația activă</h2>
+          <filegrid-section-state [state]="states()['policies']" label="politicile" (retry)="refresh()" />
+          <ul class="zone-list">@for (rule of policyRules(); track $index) {
+            <li><span><strong>{{ rule.id || 'Regulă' }}</strong> · {{ labels[rule.category || ''] || rule.category }} {{ rule.attachmentType || '' }} {{ rule.sensitivity || '' }}</span><span>{{ rule.storage }}</span></li>
+          }</ul>
           <p>
-            Modifică config/storage-policies.yaml și repornește API-ul.
-            Sesiunile existente își păstrează destinația.
+            Regulile active explică destinația fiecărei categorii.
+            Actualizările politicii se aplică transferurilor noi; sesiunile existente își păstrează destinația.
           </p>
-          <pre>{{ policies() | json }}</pre>
+          <details><summary>Vezi configurația activă</summary><pre>{{ policies() | json }}</pre></details>
           <p class="callout">
             Constrângeri ferme: contoare → Database; racordare criptată → S3
             privat; drone → S3 multipart; FTP → diagnostice legacy nesensibile.

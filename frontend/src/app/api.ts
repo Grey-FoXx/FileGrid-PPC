@@ -25,12 +25,14 @@ export interface Session {
 export interface Analysis {
   priorityScore: number;
   priorityClass: string;
-  clusterId: number;
-  clusterSize: number;
+  clusterId?: number;
+  clusterSize?: number;
   recommendation: string;
   reasons: string[];
   synthetic: boolean;
-  modelVersions: Record<string, string>;
+  modelVersions?: Record<string, string>;
+  policyVersion?: string;
+  timestamp?: string;
 }
 export interface Incident {
   id: string;
@@ -113,10 +115,10 @@ export class Api {
     init.signal?.throwIfAborted();
     return value;
   }
-  async downloadResponse(id: string) {
+  async downloadResponse(id: string, signal?: AbortSignal) {
     const credentials = this.credentials;
     const response = await fetch("/api/v1/files/" + id + "/content", {
-      signal: credentials.signal,
+      signal: signal ? AbortSignal.any([signal, credentials.signal]) : credentials.signal,
       headers: {
         Authorization: this.auth,
         "X-Correlation-ID": crypto.randomUUID(),

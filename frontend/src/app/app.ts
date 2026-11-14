@@ -2,6 +2,8 @@ import { Component, OnDestroy, signal } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { createSHA256 } from "hash-wasm";
+import { DownloadController } from "./download";
+import { SectionStateComponent, SectionState } from "./section-state";
 import { Api, ApiError, FileRecord, Session, Incident, Reading, Page } from "./api";
 interface Business {
   files: number;
@@ -37,7 +39,7 @@ interface SavedUpload {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SectionStateComponent],
   templateUrl: "./app.html",
 })
 export class AppComponent implements OnDestroy {
@@ -46,6 +48,11 @@ export class AppComponent implements OnDestroy {
     this.logout();
     this.error.set("Autentificarea nu mai este validă. Autentifică-te din nou.");
   });
+  downloads = new DownloadController(this.api);
+  states = signal<Record<string, SectionState>>({});
+  private lastRefreshError = "";
+  windowMinutes = signal<number | null>(null);
+  snapshots = signal<Record<string, { at: string; window: number | null; series: Series[] }>>({});
   me = signal<{ username: string; role: string } | null>(null);
   tab = signal("dashboard");
   busy = signal(false);
@@ -65,6 +72,15 @@ export class AppComponent implements OnDestroy {
   policies = signal<unknown>(null);
   search = "";
   categoryFilter = "";
+  statusFilter = "";
+  incidentPage = signal(0);
+  incidentTotal = signal(0);
+  meterPage = signal(0);
+  meterTotal = signal(0);
+  meterFilter = "";
+  incidentSearch = "";
+  incidentML = "";
+  incidentSort = "auto";
   filePage = signal(0);
   fileTotal = signal(0);
   selectedFile = signal<FileRecord | null>(null);
@@ -115,6 +131,7 @@ export class AppComponent implements OnDestroy {
     this.controller?.abort();
     this.refreshController?.abort();
     this.api.clear();
+    this.downloads.reset();
   }
   canStats() {
     return ["ADMIN", "DISPATCHER"].includes(this.me()?.role || "");
@@ -136,10 +153,13 @@ export class AppComponent implements OnDestroy {
       this.api.setCredentials(this.username, this.password);
       const me = await this.api.request<{ username: string; role: string }>("/me");
       if (generation !== this.authGeneration) return;
+      if (!["ADMIN", "DISPATCHER", "FIELD_OPERATOR", "CONNECTION_AGENT"].includes(me.role))
+        throw new Error("Acest cont este destinat ingestiei automate. Folosește un cont de operator pentru interfață.");
       this.me.set(me);
       this.password = "";
       this.category = me.role === "CONNECTION_AGENT" ? "CONNECTION_DOCUMENT" : "INCIDENT";
       this.tab.set(this.canStats() ? "dashboard" : "files");
+      this.focus("#workspace-content h1");
       await this.refresh();
     } catch (e) {
       if (generation !== this.authGeneration) return;
@@ -158,6 +178,20 @@ export class AppComponent implements OnDestroy {
     this.api.clear();
     this.me.set(null);
     this.password = "";
+    this.downloads.reset();
+    this.states.set({});
+    this.snapshots.set({});
+    this.windowMinutes.set(null);
+    this.lastRefreshError = "";
+    this.statusFilter = "";
+    this.incidentPage.set(0);
+    this.incidentTotal.set(0);
+    this.meterPage.set(0);
+    this.meterTotal.set(0);
+    this.meterFilter = "";
+    this.incidentSearch = "";
+    this.incidentML = "";
+    this.incidentSort = "auto";
     this.busy.set(false);
     this.loading.set(false);
     this.online.set(true);
@@ -186,8 +220,11 @@ export class AppComponent implements OnDestroy {
     this.error.set("");
   }
   async go(tab: string) {
+    if ((!this.canStats() && ["dashboard", "meters"].includes(tab)) ||
+        (!this.canIncidents() && tab === "incidents")) return;
     this.tab.set(tab);
     window.scrollTo({ top: 0 });
+    this.focus("#workspace-content h1");
     this.error.set("");
     await this.refresh();
   }
@@ -201,42 +238,53 @@ export class AppComponent implements OnDestroy {
     const current = () => generation === this.authGeneration && !controller.signal.aborted;
     const errors: string[] = [];
     let networkFailure = false;
-    const load = async <T>(path: string, apply: (value: T) => void) => {
+    const load = async <T>(section: string, path: string, apply: (value: T) => void) => {
+      this.states.update(states => ({ ...states, [section]: {
+        loading: true, error: "", updatedAt: states[section]?.updatedAt || null,
+      } }));
       try {
         const value = await this.api.request<T>(path, { signal: controller.signal });
-        if (current()) apply(value);
+        if (current()) {
+          apply(value);
+          this.states.update(states => ({ ...states, [section]: { loading: false, error: "", updatedAt: new Date().toISOString() } }));
+        }
       } catch (e) {
         if (!current()) return;
         const problem = e as ApiError;
         if (problem.status === undefined) networkFailure = true;
-        errors.push(this.problemMessage(e));
+        const message = this.problemMessage(e);
+        errors.push(message);
+        this.states.update(states => ({ ...states, [section]: { ...states[section], loading: false, error: message } }));
       }
     };
     const q = new URLSearchParams({
-      page: String(this.filePage()), size: "25", search: this.search, category: this.categoryFilter,
+      page: String(this.filePage()), size: "25", search: this.search, category: this.categoryFilter, status: this.statusFilter,
     });
     const requests: Promise<void>[] = [
-      load<Page<FileRecord>>("/files?" + q, f => {
+      load<Page<FileRecord>>("files", "/files?" + q, f => {
         this.files.set(f.items);
         this.fileTotal.set(f.total);
       }),
     ];
     if (this.canStats()) {
       requests.push(
-        load<Business>("/stats/business", b => this.business.set(b)),
-        load<Page<Incident>>("/incidents", i => this.incidents.set(i.items)),
-        load<Page<Reading>>("/meter-readings", m => this.readings.set(m.items)),
-        load<{ series: Series[] }>("/stats/technical", t => this.series.set(t.series)),
+        load<Business>("business", "/stats/business", b => this.business.set(b)),
+        load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { this.incidents.set(i.items); this.incidentTotal.set(i.total); }),
+        load<Page<Reading>>("meters", "/meter-readings?page=" + this.meterPage() + "&size=25" + (this.meterFilter ? "&meterId=" + encodeURIComponent(this.meterFilter.trim()) : ""), m => { this.readings.set(m.items); this.meterTotal.set(m.total); }),
+        load<{ series: Series[]; windowMinutes?: number }>("technical", "/stats/technical", t => { this.series.set(t.series); this.windowMinutes.set(t.windowMinutes ?? null); }),
       );
     } else if (this.me()?.role === "FIELD_OPERATOR") {
-      requests.push(load<Page<Incident>>("/incidents", i => this.incidents.set(i.items)));
+      requests.push(load<Page<Incident>>("incidents", "/incidents?page=" + this.incidentPage() + "&size=25", i => { this.incidents.set(i.items); this.incidentTotal.set(i.total); }));
     }
     if (this.tab() === "policies")
-      requests.push(load<unknown>("/policies", p => this.policies.set(p)));
+      requests.push(load<unknown>("policies", "/policies", p => this.policies.set(p)));
     await Promise.all(requests);
     if (!current()) return;
     this.online.set(!networkFailure);
-    if (errors.length) this.error.set([...new Set(errors)].join(" · "));
+    if (errors.length) {
+      this.lastRefreshError = [...new Set(errors)].join(" · ");
+      this.error.set(this.lastRefreshError);
+    } else if (this.error() === this.lastRefreshError) this.error.set("");
     this.loading.set(false);
   }
   async filter() {
@@ -259,6 +307,17 @@ export class AppComponent implements OnDestroy {
     this.uploadPhase.set("idle");
   }
   async createIncident() {
+    if (this.busy()) return;
+    const invalid = !this.stationId.trim() ? "station-id" : !this.zone.trim() ? "incident-zone" :
+      !this.eventType.trim() ? "event-type" : !Number.isInteger(this.severity) || this.severity < 1 || this.severity > 5 ? "severity" :
+      !Number.isInteger(this.affectedCustomers) || this.affectedCustomers < 0 ? "affected-customers" :
+      this.latitude === null || !Number.isFinite(this.latitude) || Math.abs(this.latitude) > 90 ? "latitude" :
+      this.longitude === null || !Number.isFinite(this.longitude) || Math.abs(this.longitude) > 180 ? "longitude" : "";
+    if (invalid) {
+      this.error.set("Completează câmpurile incidentului: severitate între 1 și 5, clienți întregi nenegativi și coordonate valide.");
+      this.focus("#" + invalid);
+      return;
+    }
     const generation = this.authGeneration;
     this.error.set("");
     this.busy.set(true);
@@ -467,6 +526,15 @@ export class AppComponent implements OnDestroy {
   }
   async upload() {
     if (!this.file || !this.me() || this.busy() || this.recovery()) return;
+    if (this.category === "CONNECTION_DOCUMENT" && (!this.applicationId.trim() || !this.documentType.trim())) {
+      this.fail(new Error("Completează ID-ul cererii și tipul documentului."));
+      this.focus(!this.applicationId.trim() ? "#application-id" : "#document-type");
+      return;
+    }
+    if (!this.file.size || this.file.size > (this.category === "DRONE_VIDEO" ? 20 * 1024 ** 3 : 10 * 1024 ** 2)) {
+      this.fail(new Error("Selectează un fișier nenul: maximum 10 MiB pentru documente/avarii sau 20 GiB pentru drone."));
+      return;
+    }
     const generation = this.authGeneration;
     const username = this.me()!.username;
     const file = this.file;
@@ -728,60 +796,8 @@ export class AppComponent implements OnDestroy {
     this.error.set("");
     this.notice.set("");
     try {
-      const picker = (
-        window as unknown as {
-          showSaveFilePicker?: (options: unknown) => Promise<{
-            createWritable(): Promise<WritableStream<Uint8Array>>;
-          }>;
-        }
-      ).showSaveFilePicker;
-      const handle = picker
-        ? await picker.call(window, { suggestedName: file.filename })
-        : null;
-      if (!handle && file.sizeBytes > 128 * 1024 * 1024)
-        throw new Error(
-          "Pentru descărcare streaming peste 128 MiB folosește Chrome/Edge cu File System Access.",
-        );
-      if (generation !== this.authGeneration) return;
-      const response = await this.api.downloadResponse(file.id);
-      const hash = await createSHA256();
-      hash.init();
-      if (handle) {
-        const writable = await handle.createWritable();
-        const reader = response.body!.getReader();
-        const writer = writable.getWriter();
-        try {
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            hash.update(value);
-            await writer.write(value);
-          }
-          if (hash.digest("hex") !== file.sha256)
-            throw new Error("SHA-256 descărcat nu corespunde!");
-          if (generation !== this.authGeneration) throw new DOMException("Logged out", "AbortError");
-          await writer.close();
-        } catch (e) {
-          await writer.abort();
-          throw e;
-        }
-      } else {
-        const blob = await response.blob();
-        hash.update(new Uint8Array(await blob.arrayBuffer()));
-        if (hash.digest("hex") !== file.sha256)
-          throw new Error("SHA-256 descărcat nu corespunde!");
-        if (generation !== this.authGeneration) return;
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = file.filename;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-      }
-      if (generation !== this.authGeneration) return;
-      this.notice.set(
-        "Descărcare verificată: SHA-256 original = SHA-256 recuperat.",
-      );
+      if (await this.downloads.run(file) && generation === this.authGeneration)
+        this.notice.set("Descărcare verificată: SHA-256 original = SHA-256 recuperat.");
     } catch (e) {
       if (generation === this.authGeneration) this.fail(e);
     }
@@ -798,13 +814,75 @@ export class AppComponent implements OnDestroy {
   attachTo(incident: Incident) {
     this.incidentId = incident.id;
     this.category = "INCIDENT";
-    this.tab.set("upload");
+    this.requestedResume.set(null);
+    this.recovery.set(null);
+    void this.go("upload");
   }
   bytes(n: number) {
     if (n < 1024) return n + " B";
     if (n < 1024 ** 2) return (n / 1024).toFixed(1) + " KiB";
     if (n < 1024 ** 3) return (n / 1024 ** 2).toFixed(1) + " MiB";
     return (n / 1024 ** 3).toFixed(2) + " GiB";
+  }
+  focus(selector: string) {
+    window.setTimeout(() => document.querySelector<HTMLElement>(selector)?.focus(), 0);
+  }
+  openDetails(file: FileRecord, event: Event) {
+    this.detailsTrigger = event.currentTarget as HTMLElement;
+    this.selectedFile.set(file);
+    this.focus("#file-details-heading");
+  }
+  private detailsTrigger: HTMLElement | null = null;
+  closeDetails() {
+    this.selectedFile.set(null);
+    this.detailsTrigger?.focus();
+  }
+  async pageList(kind: "incidents" | "meters", delta: number) {
+    (kind === "incidents" ? this.incidentPage : this.meterPage).update(page => Math.max(0, page + delta));
+    await this.refresh();
+  }
+  async filterMeters() {
+    this.meterPage.set(0);
+    await this.refresh();
+  }
+  visibleIncidents() {
+    const search = this.incidentSearch.toLocaleLowerCase("ro").trim();
+    const rows = this.incidents().filter(i =>
+      (!search || [i.stationId, i.zone, i.eventType].join(" ").toLocaleLowerCase("ro").includes(search)) &&
+      (!this.incidentML || i.mlStatus === this.incidentML),
+    );
+    const priority = this.incidentSort === "priority" || (this.incidentSort === "auto" && this.business()?.mode === "STORM");
+    return priority ? [...rows].sort((a, b) => (b.analysis?.priorityScore ?? b.severity * 20) - (a.analysis?.priorityScore ?? a.severity * 20)) : rows;
+  }
+  mlMessage(status: string) {
+    return ({ NOT_REQUESTED: "Analiza începe după verificarea primului atașament.", PENDING: "Analiza așteaptă procesarea.",
+      RUNNING: "Modelele procesează incidentul.", FAILED: "Analiza ML a eșuat. Fișierele disponibile pot fi descărcate în continuare.",
+      COMPLETED: "Analiza este finalizată; rezultatul nu a fost încă primit." } as Record<string, string>)[status] || "Starea analizei nu este cunoscută.";
+  }
+  decisionLabel(code: string) {
+    return ({ IMMEDIATE_HUMAN_REVIEW: "Evaluare umană imediată", HIGH_PRIORITY_REVIEW: "Evaluare cu prioritate ridicată",
+      SPECIALIST_REVIEW: "Evaluare de specialitate", STANDARD_REVIEW: "Evaluare standard" } as Record<string, string>)[code] || code;
+  }
+  captureSnapshot() {
+    const mode = this.business()?.mode;
+    if (!mode || !["NORMAL", "STORM"].includes(mode) || this.states()["technical"]?.error || this.states()["technical"]?.loading ||
+        this.states()["business"]?.error || this.states()["business"]?.loading || !this.states()["technical"]?.updatedAt) return;
+    this.snapshots.update(s => ({ ...s, [mode]: { at: new Date().toISOString(), window: this.windowMinutes(), series: structuredClone(this.series()) } }));
+  }
+  comparisonRows() {
+    const snapshots = this.snapshots();
+    const key = (s: Series) => [s.category, s.storage, s.operation].join("/");
+    const normal = new Map((snapshots["NORMAL"]?.series || []).map(s => [key(s), s]));
+    const storm = new Map((snapshots["STORM"]?.series || []).map(s => [key(s), s]));
+    return [...new Set([...normal.keys(), ...storm.keys()])].map(key => ({ key, normal: normal.get(key), storm: storm.get(key) }));
+  }
+  fileCategories() {
+    if (this.canStats()) return ["METER_READING", "INCIDENT", "CONNECTION_DOCUMENT", "DRONE_VIDEO"];
+    return this.canDocuments() ? ["CONNECTION_DOCUMENT"] : ["INCIDENT", "DRONE_VIDEO"];
+  }
+  policyRules() {
+    const value = this.policies() as { rules?: { id?: string; category?: string; storage?: string; attachmentType?: string; sensitivity?: string }[] } | null;
+    return Array.isArray(value?.rules) ? value.rules : [];
   }
   private problemMessage(e: unknown) {
     const x = e as ApiError;
@@ -814,6 +892,9 @@ export class AppComponent implements OnDestroy {
     return message + (x.correlationId ? " · ID " + x.correlationId : "");
   }
   fail(e: unknown) {
-    if ((e as Error).name !== "AbortError") this.error.set(this.problemMessage(e));
+    if ((e as Error).name !== "AbortError") {
+      this.error.set(this.problemMessage(e));
+      this.focus("[data-error-summary]");
+    }
   }
 }
