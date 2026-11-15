@@ -255,13 +255,13 @@ public class JobService {
             + " state='RUNNING' AND attempts>=5 AND lease_until<now()");
     var expired =
         db.queryForList(
-            "SELECT s.id,s.file_id,s.multipart_id,f.storage_key FROM upload_sessions s JOIN files f"
+            "SELECT s.id,s.file_id,s.multipart_id,f.storage_key,f.storage FROM upload_sessions s JOIN files f"
                 + " ON f.id=s.file_id WHERE s.expires_at<now() AND s.state IN"
                 + " ('CREATED','UPLOADING','UPLOADED') LIMIT 20");
     for (var e : expired)
       try {
         if (e.get("multipart_id") != null)
-          storage.abort(e.get("storage_key").toString(), e.get("multipart_id").toString());
+          storage.abort(e.get("storage").toString(), e.get("storage_key").toString(), e.get("multipart_id").toString());
         tx.executeWithoutResult(
             s -> {
               db.update(

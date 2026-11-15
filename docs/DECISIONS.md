@@ -14,3 +14,5 @@
 
 | ADR-10 | Prototype accounts in local properties; category metadata in files.context | Reduce schema/bootstrap work while preserving API; DATA_MODEL.md documents physical representation | Accepted for MVP |
 | ADR-11 | Preserve MinIO built-in stale multipart cleanup | Pinned MinIO rejects AWS AbortIncompleteMultipartUpload lifecycle; tracked sessions also have application cleanup | Accepted with tests pending |
+
+| ADR-12 | Every category can select DATABASE/S3/FTP live; guarantees follow category rather than a fixed destination | Meets configurable per-category routing: private documents encrypted everywhere, meter ACK after storage verification/commit, resumable bounded multipart for all drone destinations. FTP uses durable DB staging; defaults remain recommendations. See POLICIES.md. | Implemented 2026-11-15 |

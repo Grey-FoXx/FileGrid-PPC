@@ -203,3 +203,9 @@ User requested cleanup of the normal workspace and a presentation flow, plus UI 
 Local ignored `.env` now sets `SIMULATOR_RATE=0.2`; multiplier is 1× and Normal. This is local presentation configuration, not a source-default change on other computers. Demo and ordinary journals are preserved. All services remain running; actual API checks confirm new scoped Demo readings in Normal and all four categories. Generated ignored synthetic presentation inputs, including a sparse 1229 MiB transport payload, in `.runtime/presentation-files/`.
 
 Added `docs/PRESENTATION_5_MIN.md`: timed flow, security mechanism talking points, UI-versus-terminal evidence table and four explicitly unimplemented UI proposals. No UI/backend source change and no new full build/test campaign needed for this documentation/runtime-only preparation. Clean-up is manual, user-authorized demo maintenance, not an application retention policy or a demonstration of no-reading-loss under failures.
+
+## 2026-11-15 — configurable policies delivered locally
+
+Policy editor permits Database/S3/FTP for every category; removed fixed route guards and replaced explanatory copy with the actual guarantees. Renamed the edit action to “Configurează politica”. Existing save/persistence/stale-version behavior remains. API request shape is unchanged; the backend now implements every destination, including resumable drone transfers. See POLICIES.md and INTEGRATION_CONTRACT.md.
+
+Validation: production Angular build in gateway Docker image passed; 12 focused policy/map/workspace browser tests passed; 1 additional browser test passed against the real HTTPS UI/API for connection documents → Database and exact recovery. Built gateway deployed at https://localhost:8443. No commit/push performed.

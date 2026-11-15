@@ -39,9 +39,9 @@ export class PoliciesPage {
   readonly vm = inject(WorkspaceStore);
   readonly categories = [
     { key: "METER_READING", label: "Citiri contoare", note: "Ingestie automată, identitate unică și confirmare după commit." },
-    { key: "INCIDENT", label: "Avarii", note: "S3 pentru atașamente obișnuite; FTP este permis doar pentru loguri legacy nesensibile." },
-    { key: "CONNECTION_DOCUMENT", label: "Documente de racordare", note: "Documente private criptate înainte de stocare." },
-    { key: "DRONE_VIDEO", label: "Videoclipuri dronă", note: "Object storage cu sesiuni multipart reluabile." },
+    { key: "INCIDENT", label: "Avarii", note: "Alege Database, S3 sau FTP; regulile specifice au prioritate în ordinea afișată." },
+    { key: "CONNECTION_DOCUMENT", label: "Documente de racordare", note: "Documente criptate înainte de stocare în oricare dintre cele trei destinații." },
+    { key: "DRONE_VIDEO", label: "Videoclipuri dronă", note: "Transfer pe bucăți reluabil către Database, S3 sau FTP." },
   ];
   readonly storageTargets = [
     { key: "DATABASE", label: "Database · PostgreSQL" },
@@ -97,10 +97,6 @@ export class PoliciesPage {
     if(!this.baseConfig || !this.selectedRuleId)return 'Încarcă mai întâi politica activă.';
     if(!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}$/.test(this.draftId.trim()))return 'ID-ul regulii trebuie să aibă 1–120 caractere: litere, cifre, punct, _ sau -.';
     if(this.baseConfig.rules.some(r=>r.id!==this.selectedRuleId && r.id===this.draftId.trim()))return 'ID-ul este folosit de altă regulă.';
-    if(this.draftCategory==='METER_READING' && this.draftStorage!=='DATABASE')return 'Citirile de contor trebuie rutate către DATABASE.';
-    if(['CONNECTION_DOCUMENT','DRONE_VIDEO'].includes(this.draftCategory) && this.draftStorage!=='S3')return 'Documentele de racordare și videoclipurile dronă trebuie rutate către S3.';
-    if(this.draftCategory==='INCIDENT' && !['S3','FTP'].includes(this.draftStorage))return 'Avariile pot fi rutate doar către S3 sau FTP.';
-    if(this.draftStorage==='FTP' && (this.draftAttachmentType!=='LEGACY_LOG'||this.draftSensitivity!=='NON_SENSITIVE'))return 'FTP este permis numai pentru LEGACY_LOG cu sensibilitate NON_SENSITIVE.';
     return '';
   }
   async confirmPolicy(){

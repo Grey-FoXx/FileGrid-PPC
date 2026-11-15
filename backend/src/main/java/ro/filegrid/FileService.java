@@ -237,8 +237,8 @@ public class FileService {
     return id;
   }
 
-  @Transactional
-  public Map<String, Object> meter(byte[] payload, Authentication a) {
+  @Transactional(rollbackFor = IOException.class)
+  public Map<String, Object> meter(byte[] payload, Authentication a) throws IOException {
     roles(a, "METER_INGEST");
     demoScope.lockMutation();
     demoScope.verifyMeterEpoch();
@@ -303,7 +303,7 @@ public class FileService {
           409,
           "READING_CONFLICT",
           "Reading identity reused with different bytes");
-      return Map.of("fileId", f.id(), "duplicate", true);
+      return Map.of("fileId", f.id(), "duplicate", true, "storage", f.storage());
     }
     var d = policies.decide("METER_READING", "", "NON_SENSITIVE");
     UUID f =
@@ -316,7 +316,16 @@ public class FileService {
             a,
             Map.of(),
             d);
-    db.update("INSERT INTO blobs VALUES (?,?)", f + ".bin", payload);
+    String storageVersion = null;
+    if ("DATABASE".equals(d.storage())) db.update("INSERT INTO blobs VALUES (?,?)", f + ".bin", payload);
+    else {
+      storageVersion = storage.put(d.storage(), f + ".bin", payload);
+      try (var in = storage.open(d.storage(), f + ".bin", storageVersion)) {
+        ApiProblem.require(Integrity.sha256(in).equals(Integrity.sha256(payload)),
+            502, "INTEGRITY_FAILED", "Stored meter bytes failed verification");
+      }
+    }
+    db.update("UPDATE files SET storage_version=? WHERE id=?", storageVersion, f);
     db.update(
         "INSERT INTO meter_readings VALUES (?,?,?,?,?,?)",
         id,
@@ -328,7 +337,7 @@ public class FileService {
     demoScope.register("READING", id);
     db.update("UPDATE files SET status='AVAILABLE',integrity_status='VERIFIED' WHERE id=?", f);
     audit(a.getName(), "INGEST", f.toString(), "SUCCESS");
-    return Map.of("fileId", f, "duplicate", false);
+    return Map.of("fileId", f, "duplicate", false, "storage", d.storage());
   }
 
   @Transactional
@@ -510,7 +519,7 @@ public class FileService {
     UUID f = insertFile(category, name, type, size, hash, a, input, decision),
         id = UUID.randomUUID();
     boolean multi = category.equals("DRONE_VIDEO");
-    String upload = multi ? storage.beginMultipart(f + ".bin") : null;
+    String upload = multi ? storage.beginMultipart(decision.storage(), f + ".bin") : null;
     db.update(
         "INSERT INTO upload_sessions(id,file_id,upload_mode,multipart_id) VALUES (?,?,?,?)",
         id,
@@ -622,7 +631,7 @@ public class FileService {
           "Different bytes for existing part");
       return session(id, a);
     }
-    String etag = storage.part(f.storageKey(), row.get("multipart_id").toString(), number, bytes);
+    String etag = storage.part(f.storage(), f.storageKey(), row.get("multipart_id").toString(), number, bytes);
     db.update("INSERT INTO upload_parts VALUES (?,?,?,?,?)", id, number, hash, bytes.length, etag);
     db.update("UPDATE files SET status='UPLOADING' WHERE id=?", f.id());
     db.update("UPDATE upload_sessions SET state='UPLOADING' WHERE id=?", id);
@@ -640,7 +649,7 @@ public class FileService {
           db.queryForList("SELECT * FROM upload_parts WHERE session_id=? ORDER BY part_number", id);
       long total = parts.stream().mapToLong(x -> ((Number) x.get("size_bytes")).longValue()).sum();
       ApiProblem.require(total == f.sizeBytes(), 409, "INCOMPLETE", "Not all parts are confirmed");
-      String version = storage.complete(f.storageKey(), row.get("multipart_id").toString(), parts);
+      String version = storage.complete(f.storage(), f.storageKey(), row.get("multipart_id").toString(), parts);
       db.update("UPDATE files SET storage_version=? WHERE id=?", version, f.id());
     } else
       ApiProblem.require(
@@ -664,7 +673,7 @@ public class FileService {
         "UPLOAD_STATE",
         "Cannot cancel completed upload");
     if (row.get("upload_mode").equals("MULTIPART") && !row.get("state").equals("CANCELLED"))
-      storage.abort(f.storageKey(), row.get("multipart_id").toString());
+      storage.abort(f.storage(), f.storageKey(), row.get("multipart_id").toString());
     db.update("UPDATE upload_sessions SET state='CANCELLED' WHERE id=?", id);
     db.update("UPDATE files SET status='CANCELLED' WHERE id=?", f.id());
     audit(a.getName(), "CANCEL_UPLOAD", f.id().toString(), "SUCCESS");
@@ -803,7 +812,7 @@ public class FileService {
     var activeUploads = db.queryForList(
         "SELECT multipart_id FROM upload_sessions WHERE file_id=? AND multipart_id IS NOT NULL "
             + "AND state IN ('CREATED','UPLOADING','UPLOADED')", id);
-    for (var upload : activeUploads) storage.abort(f.storageKey(), upload.get("multipart_id").toString());
+    for (var upload : activeUploads) storage.abort(f.storage(), f.storageKey(), upload.get("multipart_id").toString());
     storage.delete(f.storage(), f.storageKey(), f.storageVersion());
     db.update("DELETE FROM jobs WHERE resource_id=?", id);
     db.update("DELETE FROM upload_parts WHERE session_id IN (SELECT id FROM upload_sessions WHERE file_id=?)", id);

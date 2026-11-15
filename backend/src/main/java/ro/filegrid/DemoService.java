@@ -74,9 +74,8 @@ class DemoService {
         "Demo-scoped records already exist. Reset the scoped dataset before initializing a fresh seed.");
     Authentication seed = adminIdentity("demo-seed");
     scope.asDemo(() -> {
-      seedReadings(seed);
       seedIncidents(seed);
-      try { seedFiles(seed); }
+      try { seedReadings(seed); seedFiles(seed); }
       catch (IOException e) { throw new DemoSeedFailure(e); }
       return null;
     });
@@ -94,9 +93,8 @@ class DemoService {
     clearTaggedData();
     Authentication seed = adminIdentity("demo-seed");
     scope.asDemo(() -> {
-      seedReadings(seed);
       seedIncidents(seed);
-      try { seedFiles(seed); }
+      try { seedReadings(seed); seedFiles(seed); }
       catch (IOException e) { throw new DemoSeedFailure(e); }
       return null;
     });
@@ -180,7 +178,7 @@ class DemoService {
     });
   }
 
-  private void seedReadings(Authentication a) {
+  private void seedReadings(Authentication a) throws IOException {
     for (int index = 1; index <= 4; index++) {
       Instant at = Instant.now().minusSeconds(index * 3600L);
       String identity = "demo-" + UUID.randomUUID();
@@ -189,8 +187,8 @@ class DemoService {
           + at + "\",\"energy_kwh\":" + (1200.5 + 37 * index) + "}";
       byte[] content = payload.getBytes(StandardCharsets.UTF_8);
       long start = System.nanoTime();
-      files.meter(content, a);
-      metrics.record("METER_READING", "DATABASE", "ingest", start, content.length, true);
+      var result = files.meter(content, a);
+      metrics.record("METER_READING", result.get("storage").toString(), "ingest", start, content.length, true);
     }
   }
 

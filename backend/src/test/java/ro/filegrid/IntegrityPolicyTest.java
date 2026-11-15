@@ -44,19 +44,22 @@ class IntegrityPolicyTest {
   }
 
   @Test
-  void routingEnforcesSensitiveDataConstraints() throws Exception {
+  void routingDefaultsAndEveryCategoryCanSelectAnyStorage() throws Exception {
     var engine = new PolicyEngine(Path.of("../config/storage-policies.yaml").toString());
     assertEquals("DATABASE", engine.decide("METER_READING", "", "NON_SENSITIVE").storage());
     assertEquals("FTP", engine.decide("INCIDENT", "LEGACY_LOG", "NON_SENSITIVE").storage());
     assertEquals("S3", engine.decide("INCIDENT", "LEGACY_LOG", "SENSITIVE").storage());
     assertEquals("S3", engine.decide("CONNECTION_DOCUMENT", "", "SENSITIVE").storage());
-    String bad =
-        Files.readString(Path.of("../config/storage-policies.yaml"))
-            .replace(
-                "id: connection-private\n    category: CONNECTION_DOCUMENT\n    storage: S3",
-                "id: connection-private\n    category: CONNECTION_DOCUMENT\n    storage: FTP");
-    Path policy = directory.resolve("bad.yaml");
-    Files.writeString(policy, bad);
-    assertThrows(ApiProblem.class, () -> new PolicyEngine(policy.toString()));
+    String defaults = Files.readString(Path.of("../config/storage-policies.yaml"));
+    for (String target : List.of("DATABASE", "S3", "FTP")) {
+      Path policy = directory.resolve(target + ".yaml");
+      Files.writeString(policy, defaults.replaceAll("storage: (DATABASE|S3|FTP)", "storage: " + target));
+      var configured = new PolicyEngine(policy.toString());
+      for (String category : List.of("METER_READING", "INCIDENT", "CONNECTION_DOCUMENT", "DRONE_VIDEO"))
+        assertEquals(target, configured.decide(category, "BINARY", "SENSITIVE").storage());
+    }
+    Path invalid = directory.resolve("bad.yaml");
+    Files.writeString(invalid, defaults.replace("storage: DATABASE", "storage: UNKNOWN"));
+    assertThrows(ApiProblem.class, () -> new PolicyEngine(invalid.toString()));
   }
 }

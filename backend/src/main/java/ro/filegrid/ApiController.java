@@ -50,13 +50,16 @@ public class ApiController {
     long started = System.nanoTime();
     byte[] bytes = Integrity.limited(request.getInputStream(), 50 * 1024);
     boolean ok = false;
+    String target = "UNKNOWN";
     try {
+      target = policies.decide("METER_READING", "", "NON_SENSITIVE").storage();
       var result = files.meter(bytes, a);
+      target = result.get("storage").toString();
       ok = true;
       return ResponseEntity.status(Boolean.TRUE.equals(result.get("duplicate")) ? 200 : 201)
           .body(result);
     } finally {
-      metrics.record("METER_READING", "DATABASE", "ingest", started, bytes.length, ok);
+      metrics.record("METER_READING", target, "ingest", started, bytes.length, ok);
     }
   }
 

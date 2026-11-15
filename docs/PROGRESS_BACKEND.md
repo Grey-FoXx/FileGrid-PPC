@@ -30,3 +30,9 @@ Historical blockers recorded then: Docker socket permission and Git HTTPS creden
 Contract notes: v1 OpenAPI follows implemented filters (files: category/status/search; meters: meterId; lists: page/size). Date filters are not implemented. No direct storage URLs. Synthetic ML is not operationally validated.
 
 Work stopped by user request after checkpoint. No subagents were spawned. Do not resume implementation without a new instruction.
+
+## 2026-11-15 — configurable routing delivered locally
+
+All four categories now accept DATABASE/S3/FTP through existing versioned policy endpoints. Removed the fixed route whitelist; added durable bounded multipart for Database/FTP (V5 blob_chunks), original-byte external meter storage with verification/rollback before ACK, actual storage metric labels and destination-aware cleanup. Document encryption/ownership and session routing snapshots remain enforced. FTP uses Compose init supervision following an observed daemon exit 139; subsequent large transport and final route campaign passed without restart.
+
+Validation: Maven verify 10/10; actual service matrix 12/12; 1025 MiB Database and FTP exact-byte recovery with API RSS ~424/~453 MiB; simulator 3/3; ML 4/4 in worker dependencies; frontend production build and Compose config passed. See VALIDATION.md and POLICIES.md. API/gateway deployed locally at https://localhost:8443; original rules restored. Changes remain in the working tree; no commit/push was requested or performed.

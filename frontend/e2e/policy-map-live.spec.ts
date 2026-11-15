@@ -96,8 +96,8 @@ test("admin live policy save updates active config without download while old fi
   await login(page);
   await page.locator("nav button").filter({ hasText: "Politici de stocare" }).click();
   const card = page.locator(".category-card").filter({ hasText: "Avarii" });
-  await card.getByRole("button", { name: "O nouă politică" }).click();
-  const dialog = page.getByRole("dialog", { name: "O nouă politică" });
+  await card.getByRole("button", { name: "Configurează politica" }).click();
+  const dialog = page.getByRole("dialog", { name: "Configurează politica" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByLabel("Regulă de configurat")).toBeFocused();
   await dialog.getByLabel("ID regulă").fill("incident-binary-v2");
@@ -134,8 +134,8 @@ test("stale policy conflict keeps the user's draft until active policy is explic
   });
   await login(page);
   await page.locator("nav button").filter({ hasText: "Politici de stocare" }).click();
-  await page.locator(".category-card").filter({ hasText: "Avarii" }).getByRole("button", { name: "O nouă politică" }).click();
-  const dialog = page.getByRole("dialog", { name: "O nouă politică" });
+  await page.locator(".category-card").filter({ hasText: "Avarii" }).getByRole("button", { name: "Configurează politica" }).click();
+  const dialog = page.getByRole("dialog", { name: "Configurează politica" });
   const draftId = dialog.getByLabel("ID regulă");
   await draftId.fill("my-pending-rule");
   await dialog.getByRole("button", { name: "Aplică politica" }).click();
@@ -159,7 +159,7 @@ test("non-admin can read policies but cannot open live editing controls", async 
   await login(page, "DISPATCHER");
   await page.locator("nav button").filter({ hasText: "Politici de stocare" }).click();
   await expect(page.getByText("Vizualizare disponibilă. Numai administratorii pot salva modificările politicilor.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "O nouă politică" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Configurează politica" })).toHaveCount(0);
   expect(writes).toBe(0);
 });
 
@@ -324,4 +324,37 @@ test("dense coastal reports stay inside Romania and retain every intervention wi
   await expect(map.getByRole('combobox',{name:'Intervenție din zonă'})).toBeVisible();
   expect(await map.getByRole('combobox',{name:'Intervenție din zonă'}).locator('option').count()).toBeGreaterThan(1);
   await expect(map.locator('.report-arrival')).toHaveCount(0);
+});
+
+test('every category can save Database, S3 and FTP without YAML or restart', async ({ page }) => {
+  test.setTimeout(60000);
+  let active = { version: 10, rules: [
+    { id: 'meters', category: 'METER_READING', storage: 'DATABASE' },
+    { id: 'incident', category: 'INCIDENT', storage: 'S3' },
+    { id: 'documents', category: 'CONNECTION_DOCUMENT', storage: 'S3' },
+    { id: 'drones', category: 'DRONE_VIDEO', storage: 'S3' },
+  ] };
+  installBaseApi(page, {
+    currentPolicy: () => active,
+    onPolicy: (_method, _path, body) => {
+      expect(body['expectedVersion']).toBe(active.version);
+      active = { version: active.version + 1, rules: body['rules'] as typeof active.rules };
+      return { json: active };
+    },
+  });
+  await login(page);
+  await page.locator('nav button').filter({ hasText: 'Politici de stocare' }).click();
+  for (const category of ['METER_READING', 'INCIDENT', 'CONNECTION_DOCUMENT', 'DRONE_VIDEO']) {
+    await page.locator('.category-card').filter({ hasText: category }).getByRole('button', { name: 'Configurează politica' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Configurează politica' });
+    for (const storage of ['DATABASE', 'S3', 'FTP']) {
+      await dialog.getByLabel('Destinație').selectOption(storage);
+      await dialog.getByRole('button', { name: 'Aplică politica' }).click();
+      await expect(dialog.getByRole('status')).toContainText(`Politica v${active.version} este activă`);
+      expect(active.rules.find(rule => rule.category === category)?.storage).toBe(storage);
+      await expect(dialog.getByRole('alert')).toHaveCount(0);
+    }
+    await dialog.getByRole('button', { name: 'Închide', exact: true }).click();
+  }
+  expect(active.version).toBe(22);
 });

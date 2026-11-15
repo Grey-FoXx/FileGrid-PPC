@@ -874,7 +874,7 @@
             "description": "The expected configuration version is stale"
           },
           "422": {
-            "description": "Malformed policy or a security invariant violation"
+            "description": "Malformed policy, unsupported destination or missing category fallback"
           },
           "default": {
             "description": "Problem",
@@ -1700,6 +1700,7 @@
         }
       },
       "StoragePolicyRule": {
+        "description": "First matching rule wins. All categories support DATABASE, S3 and FTP. Connection documents are encrypted before every destination; drone multipart is resumable for every destination. Every category requires an unconditional fallback.",
         "type": "object",
         "required": [
           "id",

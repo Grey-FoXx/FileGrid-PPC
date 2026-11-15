@@ -167,15 +167,8 @@ public class PolicyEngine {
       if (hasSensitivity)
         ApiProblem.require(rule.get("sensitivity") instanceof String && Set.of("SENSITIVE", "NON_SENSITIVE").contains(rule.get("sensitivity")), status,
             "INVALID_POLICY", "Unsupported sensitivity criterion");
-      boolean allowed = switch (category) {
-        case "METER_READING" -> "DATABASE".equals(storage) && !hasAttachment && !hasSensitivity;
-        case "CONNECTION_DOCUMENT", "DRONE_VIDEO" -> "S3".equals(storage) && !hasAttachment && !hasSensitivity;
-        case "INCIDENT" -> "S3".equals(storage)
-            || ("FTP".equals(storage) && "LEGACY_LOG".equals(rule.get("attachmentType"))
-                && "NON_SENSITIVE".equals(rule.get("sensitivity")));
-        default -> false;
-      };
-      ApiProblem.require(allowed, status, "INVALID_POLICY", "Rule violates a category security constraint");
+      ApiProblem.require(Set.of("DATABASE", "S3", "FTP").contains(storage), status,
+          "INVALID_POLICY", "Unsupported storage destination");
     }
     for (String category : CATEGORIES)
       ApiProblem.require(rules.stream().anyMatch(r -> category.equals(r.get("category"))
@@ -199,10 +192,6 @@ public class PolicyEngine {
       if (!category.equals(rule.get("category"))) continue;
       if (rule.containsKey("attachmentType") && !attachmentType.equals(rule.get("attachmentType"))) continue;
       if (rule.containsKey("sensitivity") && !sensitivity.equals(rule.get("sensitivity"))) continue;
-      String storage = Objects.toString(rule.get("storage"), "");
-      if ("INCIDENT".equals(category) && "FTP".equals(storage)
-          && !("LEGACY_LOG".equals(attachmentType) && "NON_SENSITIVE".equals(sensitivity)))
-        throw new ApiProblem(status, "INVALID_POLICY", "FTP is only valid for legacy nonsensitive logs");
       return rule;
     }
     return null;

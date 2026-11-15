@@ -143,7 +143,7 @@ test("map clusters by event, time and distance rather than local ML labels; file
   await expect(journey).toContainText("route-log.txt");
 });
 
-test("admin policy dialog keeps keyboard and FTP guards and restores policy through the live API", async ({ page }) => {
+test("admin policy dialog keeps keyboard access, permits FTP and restores policy through the live API", async ({ page }) => {
   let active = structuredClone(policies);
   const initial = structuredClone(policies);
   const writes: { method: string; path: string; body: Record<string, unknown> }[] = [];
@@ -166,9 +166,9 @@ test("admin policy dialog keeps keyboard and FTP guards and restores policy thro
   });
   await login(page);
   await page.locator("nav button").filter({ hasText: "Politici de stocare" }).click();
-  const open = page.locator(".category-card").filter({ hasText: "Avarii" }).getByRole("button", { name: "O nouă politică" });
+  const open = page.locator(".category-card").filter({ hasText: "Avarii" }).getByRole("button", { name: "Configurează politica" });
   await open.click();
-  const dialog = page.getByRole("dialog", { name: "O nouă politică" });
+  const dialog = page.getByRole("dialog", { name: "Configurează politica" });
   await expect(dialog).toBeVisible();
   const category = dialog.getByLabel("Regulă de configurat");
   await expect(category).toBeFocused();
@@ -184,17 +184,11 @@ test("admin policy dialog keeps keyboard and FTP guards and restores policy thro
   await dialog.getByLabel("Destinație").selectOption("FTP");
   const confirm = dialog.getByRole("button", { name: "Aplică politica" });
   await confirm.click();
-  await expect(dialog.getByRole("alert")).toContainText("FTP este permis numai");
-  expect(writes).toHaveLength(0);
-
-  await dialog.getByLabel("Tip atașament").selectOption("LEGACY_LOG");
-  await dialog.getByLabel("Sensibilitate").selectOption("NON_SENSITIVE");
-  await confirm.click();
   await expect(dialog.getByRole("status")).toContainText("este activă");
   expect(writes).toHaveLength(1);
   expect(writes[0]).toMatchObject({ method: "PUT", path: "/api/v1/policies", body: { expectedVersion: 4 } });
   expect((writes[0].body["rules"] as typeof policies.rules).find(rule => rule.id === "incident-binary"))
-    .toMatchObject({ storage: "FTP", attachmentType: "LEGACY_LOG", sensitivity: "NON_SENSITIVE" });
+    .toMatchObject({ storage: "FTP", attachmentType: "BINARY", sensitivity: "SENSITIVE" });
   await expect(page.locator(".page-heading")).toContainText("POLICY v5");
 
   await dialog.getByRole("button", { name: "Revino la politica inițială" }).click();

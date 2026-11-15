@@ -21,11 +21,13 @@ Pentru o instanță de verificare izolată, fără ștergerea volumelor existent
 ## Fluxuri
 
 - Contoare: JSON original în Database, identități unice, confirmare după commit și retry durabil al simulatorului.
-- Avarii: metadate în PostgreSQL, atașamente în S3; logurile legacy declarate nesensibile merg în FTP conform politicii.
+- Avarii: metadate în PostgreSQL; destinația atașamentelor este configurabilă. Implicit S3, respectiv FTP pentru loguri legacy nesensibile.
 - Politicile sunt editate live de un utilizator ADMIN în secțiunea „Politici de stocare”. Salvarea este persistentă și se aplică imediat numai sesiunilor noi; nu necesită descărcarea YAML-ului sau restartul API. Fișierele/sesiunile existente păstrează versiunea și motivul inițial.
-- Racordare: AES-256-GCM înainte de stocarea S3; acces per proprietar sau administrator.
-- Drone: multipart de 8 MiB prin API, părți persistente, reluare după restart și SHA-256 complet.
+- Racordare: AES-256-GCM înainte de stocare în Database, S3 sau FTP; acces per proprietar sau administrator.
+- Drone: multipart de 8 MiB către Database, S3 sau FTP prin API, părți persistente, reluare după restart și SHA-256 complet.
 - ML: Random Forest + DBSCAN + reguli explicabile; disponibilitatea fișierelor rămâne independentă de ML. Date sintetice, fără validare operațională.
+
+**Toate cele patru categorii pot alege Database, S3 sau FTP din interfață.** Garanțiile se păstrează indiferent de destinație; valorile YAML sunt recomandări inițiale. [Configurare, compromisuri și testul celor 12 combinații](docs/POLICIES.md).
 
 Politica activă se modifică live prin UI/API și este persistentă în PostgreSQL; `config/storage-policies.yaml` rămâne bootstrap și configurația de reset. Schimbările afectează sesiuni noi. Ratele simulatorului se configurează cu `SIMULATOR_RATE`, `SIMULATOR_METERS` și, pentru retransmisii, `SIMULATOR_DUPLICATE_EVERY` în mediul serviciului.
 

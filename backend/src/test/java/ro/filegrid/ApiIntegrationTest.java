@@ -93,21 +93,21 @@ class ApiIntegrationTest {
               if (b == null) throw new IOException("missing object");
               return new ByteArrayInputStream(b);
             });
-    when(storage.beginMultipart(anyString()))
+    when(storage.beginMultipart(anyString(), anyString()))
         .thenAnswer(x -> { parts.clear(); return UUID.randomUUID().toString(); });
-    when(storage.part(anyString(), anyString(), anyInt(), any(byte[].class)))
+    when(storage.part(anyString(), anyString(), anyString(), anyInt(), any(byte[].class)))
         .thenAnswer(
             x -> {
-              parts.put(x.getArgument(2), x.getArgument(3));
-              return "etag-" + x.getArgument(2);
+              parts.put(x.getArgument(3), x.getArgument(4));
+              return "etag-" + x.getArgument(3);
             });
-    when(storage.complete(anyString(), anyString(), anyList()))
+    when(storage.complete(anyString(), anyString(), anyString(), anyList()))
         .thenAnswer(
             x -> {
               var b = new ByteArrayOutputStream();
               for (var p : parts.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList())
                 b.write(p.getValue());
-              stored.put(x.getArgument(0), b.toByteArray());
+              stored.put(x.getArgument(1), b.toByteArray());
               return "v1";
             });
   }
@@ -456,7 +456,7 @@ class ApiIntegrationTest {
     var invalid = new ArrayList<Map<String, Object>>();
     for (var rule : rules) invalid.add(new LinkedHashMap<>(rule));
     invalid.stream().filter(rule -> "connection-private".equals(rule.get("id"))).findFirst().orElseThrow()
-        .put("storage", "FTP");
+        .put("storage", "UNSUPPORTED");
     mvc.perform(as(put("/api/v1/policies"), "admin").contentType("application/json")
             .content(json.writeValueAsBytes(Map.of("expectedVersion", version + 1, "rules", invalid))))
         .andExpect(status().isUnprocessableEntity());
@@ -491,6 +491,75 @@ class ApiIntegrationTest {
     mvc.perform(as(post("/api/v1/policies/reset"), "admin").contentType("application/json")
             .content(json.writeValueAsBytes(Map.of("expectedVersion", version + 1))))
         .andExpect(status().isConflict());
+  }
+
+  @Test
+  void personalDocumentsRemainEncryptedOnEveryConfiguredDestination() throws Exception {
+    JsonNode original = call(as(get("/api/v1/policies"), "admin"), 200);
+    long version = original.get("version").asLong();
+    try {
+      for (String target : List.of("DATABASE", "S3", "FTP")) {
+        List<Map<String, Object>> rules = json.convertValue(original.get("rules"),
+            new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        rules.stream().filter(r -> "CONNECTION_DOCUMENT".equals(r.get("category")))
+            .forEach(r -> r.put("storage", target));
+        version = call(as(put("/api/v1/policies"), "admin").contentType("application/json")
+            .content(json.writeValueAsBytes(Map.of("expectedVersion", version, "rules", rules))), 200)
+            .get("version").asLong();
+        byte[] plain = ("SYNTHETIC PRIVATE DOCUMENT " + target).getBytes();
+        JsonNode session = session("connection", "CONNECTION_DOCUMENT", plain, Map.of("applicationId", "PRIVATE-TEST"));
+        String sid = session.get("sessionId").asText(), fid = session.get("fileId").asText();
+        call(as(put("/api/v1/upload-sessions/" + sid + "/content"), "connection").content(plain), 200);
+        byte[] ciphertext = stored.get(fid + ".bin");
+        assertNotNull(ciphertext);
+        assertFalse(Arrays.equals(plain, ciphertext));
+        assertEquals(plain.length + 16, ciphertext.length);
+        assertEquals(target, call(as(get("/api/v1/files/" + fid), "admin"), 200).get("storage").asText());
+        call(as(post("/api/v1/upload-sessions/" + sid + "/complete"), "connection"), 202);
+        available(fid);
+        assertArrayEquals(plain, mvc.perform(as(get("/api/v1/files/" + fid + "/content"), "connection"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray());
+        mvc.perform(as(get("/api/v1/files/" + fid + "/content"), "connection2")).andExpect(status().isForbidden());
+      }
+    } finally {
+      call(as(put("/api/v1/policies"), "admin").contentType("application/json")
+          .content(json.writeValueAsBytes(Map.of("expectedVersion", version, "rules", original.get("rules")))), 200);
+    }
+  }
+
+  @Test
+  void meterStorageFailureRollsBackAndRetryConfirmsExactlyOneReading() throws Exception {
+    JsonNode original = call(as(get("/api/v1/policies"), "admin"), 200);
+    List<Map<String, Object>> rules = json.convertValue(original.get("rules"),
+        new com.fasterxml.jackson.core.type.TypeReference<>() {});
+    rules.stream().filter(r -> "METER_READING".equals(r.get("category"))).forEach(r -> r.put("storage", "S3"));
+    long version = call(as(put("/api/v1/policies"), "admin").contentType("application/json")
+        .content(json.writeValueAsBytes(Map.of("expectedVersion", original.get("version").asLong(), "rules", rules))), 200)
+        .get("version").asLong();
+    var attempts = new java.util.concurrent.atomic.AtomicInteger();
+    doAnswer(invocation -> {
+      if (attempts.getAndIncrement() == 0) throw new IOException("Synthetic storage outage");
+      stored.put(invocation.getArgument(1), invocation.getArgument(2));
+      return "v1";
+    }).when(storage).put(eq("S3"), anyString(), any(byte[].class));
+    byte[] reading = json.writeValueAsBytes(Map.of("schema_version", 1, "reading_id", "retry-policy",
+        "meter_id", "retry-meter", "sequence_number", 1, "measured_at", "2026-11-15T10:00:00Z", "energy_kwh", 12));
+    try {
+      call(as(post("/api/v1/meter-readings"), "meter").contentType("application/json").content(reading), 503);
+      assertEquals(0L, db.queryForObject("SELECT count(*) FROM meter_readings", Long.class));
+      assertEquals(0L, db.queryForObject("SELECT count(*) FROM files", Long.class));
+      JsonNode ack = call(as(post("/api/v1/meter-readings"), "meter").contentType("application/json").content(reading), 201);
+      assertEquals("S3", ack.get("storage").asText());
+      JsonNode replay = call(as(post("/api/v1/meter-readings"), "meter").contentType("application/json").content(reading), 200);
+      assertTrue(replay.get("duplicate").asBoolean());
+      assertEquals(ack.get("fileId"), replay.get("fileId"));
+      assertEquals(1L, db.queryForObject("SELECT count(*) FROM meter_readings", Long.class));
+      assertEquals(1L, db.queryForObject("SELECT count(*) FROM files", Long.class));
+      assertEquals(2, attempts.get());
+    } finally {
+      call(as(put("/api/v1/policies"), "admin").contentType("application/json")
+          .content(json.writeValueAsBytes(Map.of("expectedVersion", version, "rules", original.get("rules")))), 200);
+    }
   }
 
   @AfterAll
