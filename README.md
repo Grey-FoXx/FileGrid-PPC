@@ -2,6 +2,9 @@
 
 Prototip pentru ingestia și recuperarea verificabilă a citirilor de contoare, avariilor, documentelor private de racordare și fișierelor de inspecție cu drona.
 
+Documentația scurtă despre arhitectură, implementări și acoperirea cerințelor PDF este în
+[`docs/DOCUMENTATIE_IMPLEMENTARE.md`](docs/DOCUMENTATIE_IMPLEMENTARE.md).
+
 **Spring Boot + Angular + PostgreSQL + MinIO + FTP separat.** Include simulator durabil și două modele ML sintetice, asincrone.
 
 ## Pornire
@@ -16,7 +19,7 @@ Interfață: **https://localhost:8443**. Acceptă certificatul local generat pen
 
 Pentru o instanță de verificare izolată, fără ștergerea volumelor existente: `COMPOSE_PROJECT_NAME=filegrid-review FILEGRID_RUNTIME_DIR=.runtime/review FILEGRID_HTTPS_PORT=20443 ./scripts/start.sh`.
 
-**Stare verificată:** build backend/frontend, teste automate și integrare nativă cu PostgreSQL 17, MinIO și FTP reale. **Pornirea completă prin Docker Compose pe o mașină curată nu a fost executată:** utilizatorul curent nu are acces la socket-ul Docker. Validarea YAML Compose nu echivalează cu validarea containerelor. Vezi [rezultatele](docs/VALIDATION.md) și [limitele](docs/LIMITATIONS.md).
+**Stare verificată:** build backend/frontend, teste automate, integrare nativă și pornire completă într-un proiect Docker Compose izolat, cu PostgreSQL, MinIO, vsftpd, API, gateway, simulator, ML și Prometheus. Verificarea Compose este locală acestei mașini; campaniile nefuncționale rămase sunt delimitate în [rezultate](docs/VALIDATION.md) și în [auditul PDF](docs/PDF_REQUIREMENTS_REVIEW.md).
 
 ## Fluxuri
 
