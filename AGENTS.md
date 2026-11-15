@@ -20,10 +20,10 @@ Run backend tests/package, frontend production build, Python tests and compose c
 
 ## Active checkpoint — 2026-11-15
 
-Current reviewed branch: `feature/demo-command-center`. It includes the persistent live policy API/UI and bounded dispatcher-map layout. The minimum Compose stack is available at the isolated review URL documented in `VALIDATION.md`. Do not infer that work present only on `feature/backend-hardening` is merged here.
+Delivery target: `main`, integrated through a PR from `feature/demo-command-center`. It includes the persistent live policy API/UI, all 12 category/storage combinations and bounded dispatcher-map layout. The minimum Compose stack is available at the isolated review URL documented in `VALIDATION.md`. Do not infer that work present only on `feature/backend-hardening` is merged here.
 
 Before claiming PDF completion, consult `docs/PDF_REQUIREMENTS_REVIEW.md`: 10× isolation, horizontal scaling, external automatic alerts and the degraded-network/HA campaigns remain open or partial. BACKEND also owns `.github/` CI changes.
 
 Docker config validation is not a container startup test. The 2026-11-15 isolated Compose run validates PostgreSQL, MinIO, vsftpd, API, gateway/frontend, simulator, ML and Prometheus on this machine. Do not overwrite an executable JAR while its Java process is running: stop it or launch an immutable runtime copy for tests.
 
-Local IDE/runtime/test artifacts and generated credentials must remain ignored. No secrets or real personal documents may be committed. HTTPS push currently needs user authentication; never ask for tokens in chat and never force push.
+Local IDE/runtime/test artifacts and generated credentials must remain ignored. No secrets or real personal documents may be committed. Use the existing authenticated Git/GitHub CLI session for delivery; never print credentials or ask for tokens in chat, and never force push.

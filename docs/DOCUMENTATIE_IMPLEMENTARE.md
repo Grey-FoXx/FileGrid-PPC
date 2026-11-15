@@ -1,7 +1,7 @@
 # FileGrid — documentație concisă de implementare
 
-> Document de prezentare bazat pe cerințele **FileGrid PPC**, codul ramurii
-> `feature/demo-command-center` și verificările consemnate la 15.11.2026.
+> Document de prezentare bazat pe cerințele **FileGrid PPC**, codul livrat prin PR în
+> `main` și verificările consemnate la 15.11.2026.
 > Datele din modul Demo sunt sintetice. **Verificat** înseamnă că există o probă
 > executată; **implementat** că funcția există în cod; **parțial** că mai lipsește o parte
 > din cerința PDF.
@@ -30,12 +30,14 @@ storage-urile și serviciile interne sunt în rețele Docker private.
 
 ## 2. Tratarea celor patru categorii
 
-| Categoria din PDF | Intrare | Storage principal | Garanția implementată |
+| Categoria din PDF | Intrare | Storage implicit | Garanția implementată |
 |---|---|---|---|
 | Citiri de contoare | Simulator continuu / API | PostgreSQL | Payload original, identitate stabilă, ACK după commit, retry fără duplicate |
-| Înregistrări de avarie | Interfață/API | S3 sau FTP, conform politicii | Metadate disponibile imediat; atașamentul nu așteaptă ML |
+| Înregistrări de avarie | Interfață/API | S3; FTP pentru loguri legacy nesensibile | Metadate disponibile imediat; atașamentul nu așteaptă ML |
 | Documente de racordare | Interfață/API | S3 privat | AES-256-GCM înainte de storage, control pe proprietar și audit |
 | Video de dronă | Interfață/API | S3 multipart | Părți de 8 MiB, pauză/reluare și verificare SHA-256 |
+
+**Toate cele patru categorii pot alege Database, S3 sau FTP din UI**, fără cod, YAML sau restart. Tabelul arată recomandările inițiale, nu restricții. Documentele sunt criptate pentru orice destinație, contoarele sunt verificate înainte de ACK/commit, iar dronele păstrează protocolul multipart pentru toate destinațiile. Detalii: [POLICIES.md](POLICIES.md).
 
 PostgreSQL păstrează și metadatele comune: proprietar, categorie, status, SHA-256,
 storage, cheia internă, politica și versiunea ei, motivul rutării, starea integrității,
@@ -51,13 +53,13 @@ ID-ul operației și datele de audit.
 - Modificarea se aplică imediat sesiunilor noi, fără restart și fără comenzi manuale.
 - O sesiune deja creată își păstrează versiunea și destinația inițială.
 - Optimistic locking împiedică suprascrierea unei versiuni concurente.
-- Regulile de securitate nu permit rutarea documentelor personale către FTP.
+- Documentele personale pot folosi oricare destinație: AES-GCM se aplică înainte de scriere, iar accesul la plaintext este controlat prin FileGrid.
 
 ### Upload, recuperare și integritate
 
 - Uploadurile mici folosesc sesiuni durabile și un singur transfer binar.
-- Fișierele mari folosesc multipart S3; părțile confirmate pot fi reluate după refresh
-  sau restart fără retransmiterea celor acceptate.
+- Fișierele mari folosesc multipart pentru S3, Database și FTP; părțile confirmate pot fi reluate după refresh
+  sau restart fără retransmiterea celor acceptate. Database citește succesiv bucățile; FTP folosește staging durabil în PostgreSQL și finalizare prin streaming.
 - Clientul declară SHA-256, backend-ul verifică datele stocate, iar download-ul
   reverifică plaintext-ul înainte de livrare.
 - Browserul verifică din nou SHA-256 după download.
@@ -124,7 +126,7 @@ certificatele runtime nu sunt urmărite de Git.
 
 ### Protecția documentelor personale
 
-Documentele de racordare sunt criptate înainte de MinIO cu **AES-256-GCM**:
+Documentele de racordare sunt criptate înainte de orice destinație cu **AES-256-GCM**:
 
 1. aplicația verifică SHA-256 al documentului original;
 2. generează un nonce aleator unic de 12 bytes;
@@ -134,7 +136,7 @@ Documentele de racordare sunt criptate înainte de MinIO cu **AES-256-GCM**:
 6. decriptează în flux și verifică din nou SHA-256.
 
 GCM autentifică și conținutul: modificarea ciphertext-ului este detectată. Accesul direct
-la MinIO nu expune plaintext-ul fără cheia AES. Limitarea curentă este folosirea unei
+la storage nu expune plaintext-ul fără cheia AES. Limitarea curentă este folosirea unei
 singure chei locale persistente, fără KMS sau rotație automată.
 
 ## 5. Acoperirea cerințelor PDF
@@ -145,12 +147,12 @@ singure chei locale persistente, fără KMS sau rotație automată.
 |---|---|---|
 | Toate cele 4 categorii | **Verificat** | UI + simulator + smoke Compose |
 | FTP, S3 și DB ca servicii separate | **Verificat** | Ruta din UI și containerele Compose |
-| Politici fără schimbarea codului | **Verificat** | Editor ADMIN, versiune nouă fără restart |
+| Politici fără schimbarea codului | **Verificat** | Editor ADMIN, toate cele 12 combinații categorie/storage, versiune nouă fără restart |
 | Fișier recuperat identic | **Verificat** | SHA-256 backend și client |
 | Pornire cu o singură comandă | **Verificat local** | `./scripts/start.sh` |
 | UI upload, căutare și download | **Verificat** | paginile Angular |
 | Simulator continuu configurabil | **Verificat** | serviciu separat, jurnal durabil, Normal/Furtună |
-| Cod/configurații/scripturi în Git | **Implementat** | livrarea finală depinde de push-ul commitului |
+| Cod/configurații/scripturi în Git | **Implementat** | livrarea se verifică prin SHA-ul remote al ramurii `main` și PR-ul de integrare |
 
 ### Cerințe nefuncționale
 
@@ -158,7 +160,7 @@ singure chei locale persistente, fără KMS sau rotație automată.
 |---|---|---|
 | Vârf 10× fără degradarea celorlalte categorii | **Netestat complet** | Controlul și metricile există; lipsește campania cu praguri p95/erori |
 | Scalare prin instanțe suplimentare | **Netestat** | API stateless; două replici și load balancing nu au fost măsurate |
-| Fișiere peste 1 GB | **Verificat nativ** | 1229 MiB, 154 părți, heap 512 MiB; nerepetat recent în Compose |
+| Fișiere peste 1 GB | **Verificat în Compose pentru Database/FTP** | 1025 MiB, 129 părți, SHA-256 exact; API RSS maxim ~424/~453 MiB, container 1 GiB. Dovada S3 istorică este delimitată în VALIDATION.md |
 | Percentile, throughput și erori | **Implementat** | Per categorie/storage/operație |
 | Urmărire până la storage | **Parțial** | Correlation ID și audit; fără tracing distribuit per hop |
 | Alertare automată business | **Parțial** | Feed persistent și semnal pe erori; fără livrare externă/acoperire completă |
@@ -184,7 +186,7 @@ Ordinea recomandată pentru o demonstrație scurtă:
 1. autentificare ca `admin` și dashboard;
 2. upload/download pentru avarie, racordare și dronă, cu SHA-256;
 3. citiri automate și retry fără duplicate;
-4. schimbarea live a unei politici FTP/S3;
+4. schimbarea live a destinației unei categorii (de exemplu Racordare → Database), upload nou și verificarea versiunii;
 5. acces refuzat între `connection` și `connection2`;
 6. hartă, grupuri și rezultate ML asincrone;
 7. metrici p50/p95/p99 și correlation ID;
@@ -208,7 +210,7 @@ Ordinea recomandată pentru o demonstrație scurtă:
 
 - PostgreSQL este o dependență comună și nu are HA/restore demonstrat.
 - Conturile sunt locale; nu există SSO, MFA sau administrare de identități în DB.
-- FTP este necriptat, permis numai intern și pentru date legacy nesensibile.
+- FTP este accesibil numai intern; documentele de racordare sunt criptate înainte de scriere. Finalizarea multipart FTP folosește spațiu temporar în PostgreSQL și poate retransmite intern fișierul la retry.
 - Volumele Docker protejează la restart, nu la pierderea calculatorului.
 - Nu sunt închise campaniile 10×, două instanțe și rețea 200 ms/2% loss.
 - Alertarea externă, tracing-ul distribuit și rotația cheilor rămân lucrări de producție.
@@ -217,3 +219,7 @@ Ordinea recomandată pentru o demonstrație scurtă:
 
 Pentru probele și comenzile executate: [`VALIDATION.md`](VALIDATION.md). Pentru
 trasabilitatea fiecărei cerințe: [`PDF_REQUIREMENTS_REVIEW.md`](PDF_REQUIREMENTS_REVIEW.md).
+
+## 9. Verificările politicilor la livrare
+
+Schimbarea de implementare este în commitul `5797b10`; documentația inițială din `8c6ae67` a fost integrată cu păstrarea istoricului. Au trecut 10 teste Java, matricea live 12/12, testul browser real pentru racordare → Database, probele >1 GB pentru Database/FTP și verificările Python. Rezultatele complete, inclusiv incidentul vsftpd și limitele rămase, sunt în [VALIDATION.md](VALIDATION.md).

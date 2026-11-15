@@ -61,7 +61,7 @@ Backend: Java 21; testele pornesc PostgreSQL 17 temporar fără Docker și trebu
 
 ## Colaborare și checkpoint
 
-Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de integrare la predare: `develop`.
+Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de livrare la predare: `main`.
 
 Citește [AGENTS.md](AGENTS.md), [raportul pentru calculatorul 2](docs/HANDOFF_SECOND_COMPUTER.md), [contractul OpenAPI](contracts/openapi.yaml), [arhitectura](docs/ARCHITECTURE.md), [modelul de date](docs/DATA_MODEL.md), [milestone-urile](docs/MILESTONES.md) și [task-urile frontend](docs/FRONTEND_TASKS.md).
 

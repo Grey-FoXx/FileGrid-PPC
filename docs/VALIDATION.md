@@ -95,3 +95,7 @@ This review supersedes fixed category/destination restrictions in older checkpoi
 These are transport/configuration guarantees. They do not close 10× category isolation, horizontal-scale throughput, a degraded-network campaign or complete automatic business alerting. See POLICIES.md for staging and destination tradeoffs.
 
 Final readiness: gateway HTTPS **200**, API health **UP**; `python3 scripts/smoke-test.py` passed against the restored configuration. The user's pre-existing legacy rule selected S3, and was preserved (active policy v23); FTP coverage is provided by the explicit 12-route campaign rather than incorrectly attributed to that final smoke. Bootstrap/reset defaults still route legacy logs to FTP. FTP restart counter after the init mitigation remained 0.
+
+## Final integration regression — 2026-11-15
+
+`FILEGRID_BASE_URL=https://localhost:8443 npm test` against the production gateway: **73 passed, 5 skipped, 0 failed** in 1.5 minutes. Skipped tests require explicit live opt-in; the new real policy browser test is separately recorded as passing above. This run followed implementation commit `5797b10` and preceded documentation-only reconciliation with remote commit `8c6ae67`.
