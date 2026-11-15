@@ -2,6 +2,9 @@
 
 Prototip pentru ingestia și recuperarea verificabilă a citirilor de contoare, avariilor, documentelor private de racordare și fișierelor de inspecție cu drona.
 
+Documentația scurtă despre arhitectură, implementări și acoperirea cerințelor PDF este în
+[`docs/DOCUMENTATIE_IMPLEMENTARE.md`](docs/DOCUMENTATIE_IMPLEMENTARE.md).
+
 **Spring Boot + Angular + PostgreSQL + MinIO + FTP separat.** Include simulator durabil și două modele ML sintetice, asincrone.
 
 ## Pornire
@@ -14,17 +17,22 @@ Premise: Linux, Docker Engine accesibil utilizatorului curent, Docker Compose v2
 
 Interfață: **https://localhost:8443**. Acceptă certificatul local generat pentru demonstrație. Conturile sunt generate în `.runtime/accounts.txt`. Parolele, certificatele și cheia AES nu sunt în Git. Nu șterge `.runtime/` dacă păstrezi datele: cheia este necesară decriptării documentelor. Numai gateway-ul publică un port.
 
-**Stare verificată:** build backend/frontend, teste automate și integrare nativă cu PostgreSQL 17, MinIO și FTP reale. **Pornirea completă prin Docker Compose pe o mașină curată nu a fost executată:** utilizatorul curent nu are acces la socket-ul Docker. Validarea YAML Compose nu echivalează cu validarea containerelor. Vezi [rezultatele](docs/VALIDATION.md) și [limitele](docs/LIMITATIONS.md).
+Pentru o instanță de verificare izolată, fără ștergerea volumelor existente: `COMPOSE_PROJECT_NAME=filegrid-review FILEGRID_RUNTIME_DIR=.runtime/review FILEGRID_HTTPS_PORT=20443 ./scripts/start.sh`.
+
+**Stare verificată:** build backend/frontend, teste automate, integrare nativă și pornire completă într-un proiect Docker Compose izolat, cu PostgreSQL, MinIO, vsftpd, API, gateway, simulator, ML și Prometheus. Verificarea Compose este locală acestei mașini; campaniile nefuncționale rămase sunt delimitate în [rezultate](docs/VALIDATION.md) și în [auditul PDF](docs/PDF_REQUIREMENTS_REVIEW.md).
 
 ## Fluxuri
 
 - Contoare: JSON original în Database, identități unice, confirmare după commit și retry durabil al simulatorului.
-- Avarii: metadate în PostgreSQL, atașamente în S3; logurile legacy declarate nesensibile merg în FTP conform politicii.
-- Racordare: AES-256-GCM înainte de stocarea S3; acces per proprietar sau administrator.
-- Drone: multipart de 8 MiB prin API, părți persistente, reluare după restart și SHA-256 complet.
+- Avarii: metadate în PostgreSQL; destinația atașamentelor este configurabilă. Implicit S3, respectiv FTP pentru loguri legacy nesensibile.
+- Politicile sunt editate live de un utilizator ADMIN în secțiunea „Politici de stocare”. Salvarea este persistentă și se aplică imediat numai sesiunilor noi; nu necesită descărcarea YAML-ului sau restartul API. Fișierele/sesiunile existente păstrează versiunea și motivul inițial.
+- Racordare: AES-256-GCM înainte de stocare în Database, S3 sau FTP; acces per proprietar sau administrator.
+- Drone: multipart de 8 MiB către Database, S3 sau FTP prin API, părți persistente, reluare după restart și SHA-256 complet.
 - ML: Random Forest + DBSCAN + reguli explicabile; disponibilitatea fișierelor rămâne independentă de ML. Date sintetice, fără validare operațională.
 
-Politicile sunt în `config/storage-policies.yaml`; aplicare prin `docker compose restart api`. Schimbările afectează sesiuni noi. Ratele simulatorului se configurează cu `SIMULATOR_RATE`, `SIMULATOR_METERS` și, pentru retransmisii, `SIMULATOR_DUPLICATE_EVERY` în mediul serviciului.
+**Toate cele patru categorii pot alege Database, S3 sau FTP din interfață.** Garanțiile se păstrează indiferent de destinație; valorile YAML sunt recomandări inițiale. [Configurare, compromisuri și testul celor 12 combinații](docs/POLICIES.md).
+
+Politica activă se modifică live prin UI/API și este persistentă în PostgreSQL; `config/storage-policies.yaml` rămâne bootstrap și configurația de reset. Schimbările afectează sesiuni noi. Ratele simulatorului se configurează cu `SIMULATOR_RATE`, `SIMULATOR_METERS` și, pentru retransmisii, `SIMULATOR_DUPLICATE_EVERY` în mediul serviciului.
 
 ## Verificări reproductibile
 
@@ -53,8 +61,10 @@ Backend: Java 21; testele pornesc PostgreSQL 17 temporar fără Docker și trebu
 
 ## Colaborare și checkpoint
 
-Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de integrare la predare: `develop`.
+Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de livrare la predare: `main`.
 
 Citește [AGENTS.md](AGENTS.md), [raportul pentru calculatorul 2](docs/HANDOFF_SECOND_COMPUTER.md), [contractul OpenAPI](contracts/openapi.yaml), [arhitectura](docs/ARCHITECTURE.md), [modelul de date](docs/DATA_MODEL.md), [milestone-urile](docs/MILESTONES.md) și [task-urile frontend](docs/FRONTEND_TASKS.md).
 
 Cerințele originale sunt în `docs/requirements/`. Ele sunt documente de referință; instrucțiunile de execuție ale sesiunii și regulile din AGENTS.md au prioritate pentru agenți.
+
+Demo este disponibil permanent, fără flag de activare. După actualizarea codului rulează `./scripts/start.sh` pentru rebuild/migrații. Bara globală 1×–10× controlează rata simulatorului real; datele sintetice Demo au scope separat, iar „Toate datele” le include și pe acestea. [Ghidul demonstrației](docs/DEMO_PRESENTATION.md) separă probele live de limitele încă nevalidate.

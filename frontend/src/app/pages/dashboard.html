@@ -1,0 +1,192 @@
+<section class="page-heading">
+          <div>
+            <span class="eyebrow">CONTROL ȘI VIZIBILITATE</span>
+            <h1 tabindex="-1">Acasă.</h1>
+            <p>Monitorizează fluxurile de date și incidentele din teren.</p>
+          </div>
+          <button class="primary" (click)="vm.go('upload')">
+            + Încarcă fișier
+          </button>
+        </section>
+        <filegrid-section-state [state]="vm.states()['business']" label="statisticile de business" (retry)="vm.refresh()" />
+        <div class="stat-grid">
+          <article class="stat">
+            <span>Fișiere înregistrate</span
+            ><strong><filegrid-rolling-number [value]="vm.business()?.files" /></strong
+            ><small>Toate categoriile</small>
+          </article>
+          <article class="stat">
+            <span>Citiri de contoare</span
+            ><strong><filegrid-rolling-number [value]="vm.business()?.readings" /></strong
+            ><small>Identități unice, fără duplicări</small>
+          </article>
+          <article class="stat">
+            <span>Incidente raportate</span
+            ><strong><filegrid-rolling-number [value]="vm.business()?.incidents" /></strong
+            ><small
+              >{{ vm.business()?.recentIncidents ?? 0 }} în ultimele 5
+              minute</small
+            >
+          </article>
+          <article class="stat mode">
+            <span>Mod operațional</span
+            ><strong [class.orange]="vm.business()?.mode === 'STORM'">{{
+              vm.business()?.mode ?? "—"
+            }}</strong
+            ><small>Mod și volum furnizate de backend</small>
+          </article>
+        </div>
+@if(vm.demo()?.enabled && vm.demoView()){
+<section class="panel scenario-panel" aria-label="Scenariu de observabilitate">
+ <div class="panel-heading"><div><span class="eyebrow">NORMAL → STORM</span><h2>Controlul demonstrației</h2></div><span class="badge">DATE SINTETICE · SALVATE ÎN BACKEND</span></div>
+ <div class="scenario-toggle"><button class="secondary" [class.selected]="vm.demo()?.mode === 'NORMAL'" [attr.aria-pressed]="vm.demo()?.mode === 'NORMAL'" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (click)="vm.setDemoMode('NORMAL')">Normal</button><button class="secondary" [class.selected]="vm.demo()?.mode === 'STORM'" [attr.aria-pressed]="vm.demo()?.mode === 'STORM'" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (click)="vm.setDemoMode('STORM')">Storm</button></div>
+ <div class="load-preview" [class.peak]="vm.demo()?.mode === 'STORM'" aria-hidden="true">@for(n of [1,2,3,4,5,6,7,8,9,10];track n){<i [style.--n]="n"></i>}</div>
+ <p aria-live="polite">{{vm.demo()?.mode === 'STORM' ? 'Storm activ în backend: rapoarte sintetice sunt introduse progresiv, stocate și analizate. Urmărește apariția și gruparea lor pe hartă.' : 'Normal: contoare continue și un lot sintetic de avarie, document și video la aproximativ 45 de secunde (mai rapid la volum crescut).'}}</p>
+ @if(vm.demo()?.generating){<p class="callout" role="status">Backend-ul generează datele demonstrației. Harta și metricile se actualizează automat.</p>}
+ <p class="footnote">Valorile de mai jos provin din API și storage. Graficul de sus indică scenariul ales, nu este un benchmark. Normal oprește rafala Storm, dar păstrează fluxul mixt continuu. Reset demo reface setul inițial și elimină doar datele demo. Fișierele automate din cele trei categorii manuale sunt exclusiv pentru demonstrație; fluxul normal din PDF rămâne încărcarea prin UI.</p>
+</section>
+}
+<section class="panel" aria-label="Avertizări de business"><h2>Semnale care necesită atenție</h2>
+ <div aria-live="polite">@for(risk of risks();track risk){<p class="alert error" role="status">{{risk}}</p>} @empty {<p>Nu sunt semnale de eroare în datele accesibile curent. Aceasta nu demonstrează îndeplinirea tuturor garanțiilor de business.</p>}</div>
+ <p class="footnote">Semnalele de mai sus sunt locale. Notificările de mai jos sunt persistate pe server și vizibile tuturor dispecerilor/administratorilor conectați. Livrarea email/webhook și acoperirea tuturor riscurilor business nu sunt implementate.</p>
+</section>
+<section class="panel" aria-label="Demonstrații verificabile">
+ <div class="panel-heading"><div><span class="eyebrow">DEMO · PROBE REALE, DATE SINTETICE</span><h2>Notificări și recuperare</h2></div></div>
+ <div class="scenario-toggle">
+  <button class="secondary" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (click)="vm.demoProbe('notification')">Simulează notificare de risc</button>
+  <button class="secondary" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (click)="vm.demoProbe('integrity')">Testează corupere și recuperare automată</button>
+ </div>
+ <p>Testul de integritate creează un fișier sintetic propriu în S3, îl corupe, detectează diferența SHA-256 și îl recuperează automat dintr-o copie validă separată. Nu este o garanție de reparare a oricărui fișier și nu modifică upload-urile existente.</p>
+ <div aria-live="polite">
+ @for(probe of vm.demo()?.integrityProbes || [];track probe.fileId){
+  <article class="probe-card" [class.recovered]="probe.state==='RECOVERED'"><strong>{{probe.state==='INJECTED'?'1 · Corupere injectată':probe.state==='DETECTED'?'2 · Detectat, recuperare automată':'3 · Recuperat și verificat'}}</strong><p>{{probe.detail}}</p><small>File ID: {{probe.fileId}}</small></article>
+ }
+ @for(notification of vm.demo()?.notifications || [];track notification.id){
+  <p class="alert" role="status"><strong>{{notification.synthetic?'TEST SINTETIC':'SEMNAL AUTOMAT'}}</strong> · {{notification.message}} <small>{{notification.createdAt | date:'HH:mm:ss'}}</small></p>
+ }
+ </div>
+ <p class="footnote">Pentru &gt;1 GB: Încarcă fișiere → Inspecții dronă → selectează un fișier de peste 1 GB. Progresul și reluarea se văd aici; memoria serviciului se măsoară separat cu docker stats sau scripts/large-file-test.py. Animația nu reprezintă consumul de memorie.</p>
+</section>
+        <div class="dashboard-columns">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow">TRASEUL DATELOR</span>
+                <h2>Patru surse. Un punct de intrare.</h2>
+              </div>
+              <span class="badge teal">POLICY ROUTING</span>
+            </div>
+            <div class="route-list">
+              <div>
+                <span class="route-icon">⌁</span>
+                <div>
+                  <strong>Citiri contoare</strong
+                  ><small>Ingestie automată · idempotency</small>
+                </div>
+                <span class="storage database">Database</span>
+              </div>
+              <div>
+                <span class="route-icon">ϟ</span>
+                <div>
+                  <strong>Înregistrări de avarie</strong
+                  ><small>Acces rapid · analiză asincronă</small>
+                </div>
+                <span class="storage s3">S3 / FTP</span>
+              </div>
+              <div>
+                <span class="route-icon">▤</span>
+                <div>
+                  <strong>Documente de racordare</strong
+                  ><small>AES-256-GCM · acces privat</small>
+                </div>
+                <span class="storage s3">S3 privat</span>
+              </div>
+              <div>
+                <span class="route-icon">↗</span>
+                <div>
+                  <strong>Inspecții cu drona</strong
+                  ><small>Multipart · reluare transfer</small>
+                </div>
+                <span class="storage s3">S3</span>
+              </div>
+            </div>
+          </section>
+          <section class="panel intelligence">
+            <span class="eyebrow">STORM INTELLIGENCE</span>
+            <h2>Context pentru<br />decizii mai clare.</h2>
+            <p>
+              Prioritizare și corelare a incidentelor. Două modele specializate,
+              recomandări explicabile.
+            </p>
+            <div class="model-tags">
+              <span>Random Forest</span><span>DBSCAN</span>
+            </div>
+            <button class="text-button" (click)="vm.go('incidents')">
+              Deschide dispeceratul →</button
+            ><small
+              >Date sintetice · suport decizional, fără control automat al
+              rețelei.</small
+            >
+          </section>
+        </div>
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">PERFORMANȚĂ MĂSURATĂ</span>
+              <h2>Transferuri și latență</h2>
+            </div>
+            <small>Fereastră: {{ vm.windowMinutes() === null ? 'nespecificată' : vm.windowMinutes() + ' minute' }} · valori măsurate</small>
+          </div>
+          <filegrid-section-state [state]="vm.states()['technical']" label="metricile tehnice" (retry)="vm.refresh()" />
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Metrici pe categorie și storage">
+            <table>
+              <thead>
+                <tr>
+                  <th>Categorie / operație</th>
+                  <th>Storage</th>
+                  <th>Operații</th>
+                  <th>Transfer / secundă</th>
+                  <th>Operații / secundă</th>
+                  <th>p50</th>
+                  <th>p95</th>
+                  <th>p99</th>
+                  <th>Erori</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (s of vm.series(); track $index) {
+                  <tr>
+                    <td>
+                      {{ vm.labels[s.category] }}<small>{{ s.operation }}</small>
+                    </td>
+                    <td>{{ s.storage }}</td>
+                    <td>{{ s.operations }}</td>
+                    <td>{{ vm.bytes(s.bytesPerSecond) }}/s</td>
+                    <td>{{ s.operationsPerSecond | number: "1.0-6" }}</td>
+                    <td>{{ s.p50Ms | number: "1.0-1" }} ms</td>
+                    <td>{{ s.p95Ms | number: "1.0-1" }} ms</td>
+                    <td>{{ s.p99Ms | number: "1.0-1" }} ms</td>
+                    <td>{{ s.errorRate * 100 | number: "1.0-1" }}%</td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="9" class="empty">
+                      @if (vm.states()['technical']?.loading) { Se încarcă metricile… }
+                      @else if (vm.states()['technical']?.error) { Metricile sunt indisponibile momentan. }
+                      @else { Metricile apar după primele operații. Nu sunt generate valori demonstrative. }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel" aria-label="Avarii pe zone">
+          <h2>Zone cu avarii</h2>
+          <p>Total înregistrat, independent de pagina de incidente deschisă.</p>
+          <ul class="zone-list">
+            @for (zoneRow of vm.business()?.zones || []; track zoneRow.zone) {
+              <li><strong>{{ zoneRow.zone }}</strong> <span>{{ zoneRow.incidents }} incidente</span></li>
+            } @empty { <li>{{ vm.states()['business']?.error ? 'Date indisponibile.' : 'Nu există date pe zone.' }}</li> }
+          </ul>
+        </section>

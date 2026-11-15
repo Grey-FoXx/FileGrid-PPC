@@ -19,3 +19,7 @@ Only implemented query filters are declared in OpenAPI: files category/status/se
 Private worker contract: POST /internal/v1/jobs/claim returns {} or {jobId,attempt,incident,context}; complete uses POST /internal/v1/jobs/{id}/complete with attempt plus ml-result fields; fail uses /fail with attempt. X-Worker-Token is required; gateway blocks /internal/. Jobs use leases and bounded retries.
 
 Workflow verification and outstanding compatibility notes are in VALIDATION.md and HANDOFF_SECOND_COMPUTER.md. No unilateral frontend changes to contracts are allowed.
+
+## 2026-11-15: configurable destinations
+
+All categories now accept DATABASE/S3/FTP; policy request fields and existing endpoints are unchanged. Meter acknowledgments additionally include `storage`. Upload-session multipart endpoints and part size remain unchanged for every destination, including Database/FTP drones. Connection encryption/ownership, stale-policy 409, and existing-session routing remain enforced. See POLICIES.md for transport and staging tradeoffs.

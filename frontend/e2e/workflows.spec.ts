@@ -73,7 +73,7 @@ test.beforeEach(async ({ page }) => {
           fileId: "file-1",
           uploadMode: "SINGLE",
           partSizeBytes: 8388608,
-          expiresAt: "2026-11-15T10:00:00Z",
+          expiresAt: "2099-01-01T00:00:00Z",
           status: "CREATED",
           confirmedParts: [],
         };
@@ -96,7 +96,7 @@ async function login(page: Page) {
   await page.getByLabel("Parolă", { exact: true }).fill("fixture");
   await page.getByRole("button", { name: "Intră în platformă" }).click();
   await expect(
-    page.getByRole("heading", { name: "Rețeaua, în perspectivă." }),
+    page.getByRole("heading", { name: "Acasă." }),
   ).toBeVisible();
 }
 test("authentication errors and dashboard", async ({ page }) => {
@@ -107,7 +107,7 @@ test("authentication errors and dashboard", async ({ page }) => {
   await page.getByLabel("Parolă", { exact: true }).fill("fixture");
   await page.getByRole("button", { name: "Intră în platformă" }).click();
   await expect(
-    page.getByRole("heading", { name: "Rețeaua, în perspectivă." }),
+    page.getByRole("heading", { name: "Acasă." }),
   ).toBeVisible();
   await expect(
     page.getByText("Metricile apar după primele operații.", { exact: false }),

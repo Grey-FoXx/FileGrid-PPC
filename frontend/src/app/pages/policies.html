@@ -1,0 +1,42 @@
+<section class="page-heading">
+  <div><span class="eyebrow">ROUTING EXPLICABIL</span><h1 tabindex="-1">Politici de stocare.</h1><p>Configurează politica activă. Modificările validate sunt salvate prin API și se aplică imediat sesiunilor noi.</p></div>
+  <span class="badge teal">POLICY v{{ policyVersion }}</span>
+</section>
+<filegrid-section-state [state]="vm.states()['policies']" label="politicile" (retry)="vm.refresh()" />
+<section class="panel" aria-labelledby="policy-picker-title">
+  <div class="panel-heading"><div><span class="eyebrow">CATEGORY PICKER</span><h2 id="policy-picker-title">Alege categoria de configurat</h2></div><span class="badge">Configurație activă v{{ policyVersion }}</span></div>
+  @if (!activeConfig) { <p class="empty">Așteaptă încărcarea configurației active înainte de a modifica regulile.</p> }
+  @else {
+    @if (!isAdmin) { <p class="empty">Vizualizare disponibilă. Numai administratorii pot salva modificările politicilor.</p> }
+    <div class="category-picker">
+      @for (category of categories; track category.key) {
+        <article class="category-card"><span class="eyebrow">{{ category.key }}</span><h3>{{ category.label }}</h3><p>{{ category.note }}</p><small>{{ rulesFor(category.key).length }} reguli active</small>
+          @for (rule of rulesFor(category.key); track rule.id) { <div class="policy-summary"><span><strong>{{ rule.id }}</strong><br>{{ rule.attachmentType || 'Toate tipurile' }} · {{ rule.sensitivity || 'Orice sensibilitate' }}</span><span>{{ storageLabel(rule.storage) }}</span></div> }
+          @if (isAdmin) { <button class="secondary" type="button" (click)="newPolicy(category.key)">Configurează politica</button> }
+        </article>
+      }
+    </div>
+  }
+</section>
+<section class="panel"><h2>Configurația activă din API</h2><p>Regulile sunt evaluate în ordinea afișată. Fiecare fișier păstrează versiunea și explicația deciziei luate la crearea sesiunii.</p>
+  <details><summary>Vezi configurația activă</summary><pre>{{ vm.policies() | json }}</pre></details>
+  <p class="callout guard-note">Fiecare categorie poate folosi Database, S3 sau FTP. Documentele de racordare sunt criptate indiferent de destinație. Contoarele păstrează identitățile unice și confirmarea după commit. Dronele folosesc transfer pe bucăți pentru toate destinațiile.</p>
+</section>
+@if (modalOpen) {
+  <dialog #policyDialog class="policy-modal" aria-labelledby="new-policy-title" aria-describedby="policy-modal-help" (click)="$event.target === $event.currentTarget && closeModal()" (cancel)="$event.preventDefault(); closeModal()" (close)="modalOpen = false">
+      <div class="modal-heading"><div><span class="eyebrow">CONFIGURARE LIVE</span><h2 id="new-policy-title">Configurează politica</h2></div><button class="modal-close" type="button" aria-label="Închide dialogul" (click)="closeModal()" [disabled]="saving()">×</button></div>
+      <p id="policy-modal-help">Modifică regula categoriei alese, apoi aplic-o. Nu este necesar un download sau restart. Transferurile deja începute păstrează politica inițială.</p>
+      <div class="policy-form">
+        <label>Regulă de configurat<select [(ngModel)]="selectedRuleId" (ngModelChange)="selectRule()" [disabled]="saving()" autofocus>@for(rule of editableRules();track rule.id){<option [value]="rule.id">{{rule.id}} · {{rule.storage}}</option>}</select></label><label>ID regulă<input type="text" maxlength="120" [(ngModel)]="draftId" [disabled]="saving()"></label>
+        <label>Categorie<select [disabled]="saving()" [(ngModel)]="draftCategory" (ngModelChange)="onCategoryChanged()"><option value="METER_READING">Citiri contoare</option><option value="INCIDENT">Avarii</option><option value="CONNECTION_DOCUMENT">Documente de racordare</option><option value="DRONE_VIDEO">Videoclipuri dronă</option></select></label>
+        <label>Destinație<select [disabled]="saving()" [(ngModel)]="draftStorage">@for (storage of storageTargets; track storage.key) { <option [value]="storage.key">{{ storage.label }}</option> }</select></label>
+        @if (draftCategory === 'INCIDENT') { <label>Tip atașament<select [disabled]="saving()" [(ngModel)]="draftAttachmentType"><option value="">Orice tip</option><option value="BINARY">BINARY</option><option value="LEGACY_LOG">LEGACY_LOG</option></select></label><label>Sensibilitate<select [disabled]="saving()" [(ngModel)]="draftSensitivity"><option value="">Orice sensibilitate</option><option value="SENSITIVE">SENSITIVE</option><option value="NON_SENSITIVE">NON_SENSITIVE</option></select></label> }
+      </div>
+      <p class="guard-note">Alege orice destinație. Pentru avarii, regula legacy se aplică înaintea regulii generale. Schimbările se aplică numai fișierelor și sesiunilor noi.</p>
+      @if (error()) { <p class="form-error" role="alert">{{ error() }}</p> }
+      <div class="policy-actions"><button class="secondary" type="button" [disabled]="saving()" (click)="restoreOriginalConfig()">Revino la politica inițială</button><button class="secondary" type="button" [disabled]="saving()" (click)="closeModal()">Închide</button><button class="primary" type="button" [disabled]="saving()" (click)="confirmPolicy()">{{saving() ? 'Se aplică…' : 'Aplică politica'}}</button></div>
+      @if(error()){<button class="text-button" [disabled]="saving()" (click)="reloadDraft()">Reîncarcă politica activă</button>}
+      @if(applied()){<p class="alert success" role="status">{{applied()}}</p>}
+      <p class="footnote">Politica este comună modurilor Demo și Toate datele. Versiune activă: {{policyVersion}}. Salvarea este persistentă; noua versiune este atribuită automat de backend. Revenirea inițială se aplică tuturor categoriilor și creează o versiune nouă.</p>
+  </dialog>
+}

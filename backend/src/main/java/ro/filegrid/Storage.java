@@ -103,10 +103,11 @@ public class Storage {
 
   public InputStream open(String dest, String key, String version) throws IOException {
     return switch (dest) {
-      case "DATABASE" ->
-          new ByteArrayInputStream(
-              db.queryForObject(
-                  "SELECT content FROM blobs WHERE storage_key=?", byte[].class, key));
+      case "DATABASE" -> {
+        var rows = db.query("SELECT content FROM blobs WHERE storage_key=?",
+            (r, n) -> r.getBytes(1), key);
+        yield rows.isEmpty() ? chunks(key) : new ByteArrayInputStream(rows.getFirst());
+      }
       case "S3" ->
           s3.getObject(
               GetObjectRequest.builder().bucket(bucket).key(key).versionId(version).build());
@@ -133,13 +134,69 @@ public class Storage {
     };
   }
 
-  public String beginMultipart(String key) {
+  public void delete(String dest, String key, String version) throws IOException {
+    switch (dest) {
+      case "DATABASE" -> {
+        db.update("DELETE FROM blobs WHERE storage_key=?", key);
+        db.update("DELETE FROM blob_chunks WHERE storage_key=?", key);
+      }
+      case "S3" -> {
+        var request = DeleteObjectRequest.builder().bucket(bucket).key(key);
+        if (version != null && !version.isBlank()) request.versionId(version);
+        s3.deleteObject(request.build());
+      }
+      case "FTP" -> {
+        var f = ftp();
+        try { f.deleteFile(key); }
+        finally { f.disconnect(); }
+      }
+      default -> throw new IllegalArgumentException("Unknown storage");
+    }
+  }
+
+  /** Reads at most one 8 MiB chunk at a time, with no open cursor/connection between reads. */
+  private InputStream chunks(String key) {
+    return new InputStream() {
+      private InputStream current = InputStream.nullInputStream();
+      private int next = 1;
+      private boolean ended, closed;
+      @Override public int read() throws IOException {
+        byte[] one = new byte[1];
+        return read(one, 0, 1) < 0 ? -1 : one[0] & 0xff;
+      }
+      @Override public int read(byte[] bytes, int off, int len) throws IOException {
+        Objects.checkFromIndexSize(off, len, bytes.length);
+        if (closed) throw new IOException("Stream closed");
+        if (len == 0) return 0;
+        while (!ended) {
+          int n = current.read(bytes, off, len);
+          if (n >= 0) return n;
+          current.close();
+          current = InputStream.nullInputStream();
+          var rows = db.query("SELECT content FROM blob_chunks WHERE storage_key=? AND part_number=?",
+              (r, index) -> r.getBytes(1), key, next++);
+          if (rows.isEmpty()) ended = true;
+          else current = new ByteArrayInputStream(rows.getFirst());
+        }
+        return -1;
+      }
+      @Override public void close() throws IOException { closed = true; current.close(); }
+    };
+  }
+
+  public String beginMultipart(String dest, String key) {
+    if (!"S3".equals(dest)) return key;
     return s3.createMultipartUpload(
             CreateMultipartUploadRequest.builder().bucket(bucket).key(key).build())
         .uploadId();
   }
 
-  public String part(String key, String uploadId, int number, byte[] data) {
+  public String part(String dest, String key, String uploadId, int number, byte[] data) {
+    if (!"S3".equals(dest)) {
+      db.update("INSERT INTO blob_chunks(storage_key,part_number,content) VALUES (?,?,?)",
+          key, number, data);
+      return Integrity.sha256(data);
+    }
     return s3.uploadPart(
             UploadPartRequest.builder()
                 .bucket(bucket)
@@ -151,7 +208,22 @@ public class Storage {
         .eTag();
   }
 
-  public String complete(String key, String uploadId, List<Map<String, Object>> parts) {
+  public String complete(String dest, String key, String uploadId, List<Map<String, Object>> parts) {
+    if ("DATABASE".equals(dest)) return null;
+    if ("FTP".equals(dest)) {
+      // Stream durable chunks; neither assembly nor retrieval buffers the full video.
+      try (InputStream in = chunks(key)) {
+        var client = ftp();
+        try {
+          if (!client.storeFile(key + ".part", in) || !client.rename(key + ".part", key))
+            throw new IOException("FTP multipart finalization refused");
+        } finally { client.disconnect(); }
+      } catch (IOException e) {
+        throw new java.io.UncheckedIOException(e);
+      }
+      db.update("DELETE FROM blob_chunks WHERE storage_key=?", key);
+      return null;
+    }
     var p =
         parts.stream()
             .map(
@@ -178,7 +250,11 @@ public class Storage {
     }
   }
 
-  public void abort(String key, String uploadId) {
+  public void abort(String dest, String key, String uploadId) {
+    if (!"S3".equals(dest)) {
+      db.update("DELETE FROM blob_chunks WHERE storage_key=?", key);
+      return;
+    }
     s3.abortMultipartUpload(
         AbortMultipartUploadRequest.builder().bucket(bucket).key(key).uploadId(uploadId).build());
   }

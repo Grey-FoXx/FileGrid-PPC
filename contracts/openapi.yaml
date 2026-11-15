@@ -86,7 +86,21 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        ]
       },
       "get": {
         "summary": "Authorized paginated search",
@@ -133,6 +147,18 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           }
         ]
@@ -199,6 +225,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
           }
         ]
       }
@@ -242,6 +280,18 @@
             "in": "query",
             "schema": {
               "type": "integer"
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           }
         ]
@@ -288,6 +338,18 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           }
         ]
@@ -420,6 +482,18 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
             }
           }
         ]
@@ -738,10 +812,69 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/StoragePolicyConfig"
                 }
               }
             }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace ordered storage policies for new sessions (ADMIN only)",
+        "operationId": "put__policies",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion",
+                  "rules"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "rules": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/StoragePolicyRule"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Persisted configuration with its newly incremented version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicyConfig"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The expected configuration version is stale"
+          },
+          "422": {
+            "description": "Malformed policy, unsupported destination or missing category fallback"
           },
           "default": {
             "description": "Problem",
@@ -781,7 +914,21 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        ]
       }
     },
     "/stats/business": {
@@ -809,7 +956,335 @@
               }
             }
           }
+        },
+        "parameters": [
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/incident-groups": {
+      "get": {
+        "summary": "Persistent unresolved groups; includeResolved enables history",
+        "operationId": "get__incident-groups",
+        "parameters": [
+          {
+            "name": "includeResolved",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "X-FileGrid-Demo",
+            "in": "header",
+            "required": false,
+            "description": "Explicitly selects the bounded demo dataset when demo support is enabled. Omit to use all data.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persistent groups with their member incidents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentGroupPage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
         }
+      }
+    },
+    "/incident-groups/{id}/status": {
+      "patch": {
+        "summary": "Advance a group NEW → DISPATCHED → RESOLVED",
+        "operationId": "patch__incident-groups_id_status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "NEW",
+                      "DISPATCHED",
+                      "RESOLVED"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated group status"
+          },
+          "409": {
+            "description": "Invalid or stale transition"
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/demo": {
+      "get": {
+        "summary": "Demo capability, seed and generator status",
+        "operationId": "get__demo",
+        "responses": {
+          "200": {
+            "description": "Demo status"
+          }
+        },
+        "description": "Always available; no environment flag required. Status includes flow.multiplier, bounded notifications, integrityProbes and fileFeedLimited. Probe recovery applies only to generated synthetic fixtures with an independent recovery copy; no repair guarantee for arbitrary user files."
+      }
+    },
+    "/demo/initialize": {
+      "post": {
+        "summary": "Create the bounded tagged demo seed once",
+        "operationId": "post__demo_initialize",
+        "responses": {
+          "200": {
+            "description": "Seed status"
+          },
+          "409": {
+            "description": "Demo-scoped data already exists"
+          }
+        }
+      }
+    },
+    "/demo/reset": {
+      "post": {
+        "summary": "Reset and reseed only tagged demo resources",
+        "operationId": "post__demo_reset",
+        "responses": {
+          "200": {
+            "description": "Reset seed status"
+          }
+        }
+      }
+    },
+    "/demo/mode": {
+      "post": {
+        "summary": "Set server-side NORMAL or STORM generation mode",
+        "operationId": "post__demo_mode",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "NORMAL",
+                      "STORM"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Demo mode status"
+          },
+          "409": {
+            "description": "Demo is not initialized"
+          }
+        }
+      }
+    },
+    "/policies/reset": {
+      "post": {
+        "summary": "Restore bootstrap rules using a new monotonic version (ADMIN only)",
+        "operationId": "post__policies_reset",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Restored bootstrap configuration with incremented version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoragePolicyConfig"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The expected configuration version is stale"
+          },
+          "422": {
+            "description": "Malformed request"
+          },
+          "default": {
+            "description": "Problem",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/simulator": {
+      "get": {
+        "summary": "Read actual multiplier and demo epoch (ADMIN, DISPATCHER, METER_INGEST)",
+        "responses": {
+          "200": {
+            "description": "Current control or probe result"
+          },
+          "403": {
+            "description": "Role not permitted"
+          }
+        },
+        "operationId": "get_simulator"
+      }
+    },
+    "/demo/volume": {
+      "put": {
+        "summary": "Set durable shared simulator multiplier 1 to 10 (ADMIN)",
+        "responses": {
+          "200": {
+            "description": "Current control or probe result"
+          },
+          "403": {
+            "description": "Role not permitted"
+          },
+          "422": {
+            "description": "Invalid multiplier"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "multiplier"
+                ],
+                "properties": {
+                  "multiplier": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "put_demo_volume"
+      }
+    },
+    "/demo/notifications/test": {
+      "post": {
+        "summary": "Publish an explicitly synthetic in-app team notification (ADMIN)",
+        "responses": {
+          "200": {
+            "description": "Current control or probe result"
+          },
+          "403": {
+            "description": "Role not permitted"
+          }
+        },
+        "operationId": "post_demo_notifications_test"
+      }
+    },
+    "/demo/integrity-probes": {
+      "post": {
+        "summary": "Create an isolated S3 corruption and automatic recovery fixture (ADMIN)",
+        "responses": {
+          "200": {
+            "description": "Current control or probe result"
+          },
+          "403": {
+            "description": "Role not permitted"
+          }
+        },
+        "operationId": "post_demo_integrity_probes"
       }
     }
   },
@@ -846,6 +1321,17 @@
           },
           "role": {
             "type": "string"
+          },
+          "features": {
+            "type": "object",
+            "properties": {
+              "demo": {
+                "type": "boolean"
+              },
+              "incidentGroups": {
+                "type": "boolean"
+              }
+            }
           }
         }
       },
@@ -1059,6 +1545,19 @@
             "items": {
               "$ref": "#/components/schemas/File"
             }
+          },
+          "groupId": {
+            "type": "string",
+            "nullable": true
+          },
+          "interventionStatus": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "DISPATCHED",
+              "RESOLVED"
+            ],
+            "nullable": true
           }
         }
       },
@@ -1121,6 +1620,131 @@
           },
           "total": {
             "type": "integer"
+          }
+        }
+      },
+      "IncidentGroupPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentGroup"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "IncidentGroup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "DISPATCHED",
+              "RESOLVED"
+            ]
+          },
+          "zone": {
+            "type": "string"
+          },
+          "eventType": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "integer"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "incidents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Incident"
+            }
+          },
+          "groupAnalysis": {
+            "type": "object"
+          }
+        }
+      },
+      "StoragePolicyConfig": {
+        "type": "object",
+        "required": [
+          "version",
+          "rules"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StoragePolicyRule"
+            }
+          }
+        }
+      },
+      "StoragePolicyRule": {
+        "description": "First matching rule wins. All categories support DATABASE, S3 and FTP. Connection documents are encrypted before every destination; drone multipart is resumable for every destination. Every category requires an unconditional fallback.",
+        "type": "object",
+        "required": [
+          "id",
+          "category",
+          "storage"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "METER_READING",
+              "INCIDENT",
+              "CONNECTION_DOCUMENT",
+              "DRONE_VIDEO"
+            ]
+          },
+          "storage": {
+            "type": "string",
+            "enum": [
+              "DATABASE",
+              "S3",
+              "FTP"
+            ]
+          },
+          "attachmentType": {
+            "type": "string",
+            "enum": [
+              "BINARY",
+              "LEGACY_LOG"
+            ]
+          },
+          "sensitivity": {
+            "type": "string",
+            "enum": [
+              "SENSITIVE",
+              "NON_SENSITIVE"
+            ]
           }
         }
       }

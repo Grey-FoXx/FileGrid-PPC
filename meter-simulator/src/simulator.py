@@ -1,6 +1,6 @@
 """Durable synthetic readings; an acknowledgment is required before deleting an event."""
 
-import base64, json, os, sqlite3, time, random, urllib.request, urllib.error
+import base64, hashlib, json, os, sqlite3, time, random, urllib.request, urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -89,30 +89,53 @@ def main():
     url = os.environ.get("FILEGRID_URL", "http://api:8080/api/v1") + "/meter-readings"
     user, password = credentials()
     auth = "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+    demo_journal = Journal(str(state) + ".demo")
+    control = {"multiplier": 1, "demoInitialized": False, "demoEpoch": None}
+    control_due = 0
     next_due = time.monotonic()
     index = 0
     acked = 0
     while True:
         now = time.monotonic()
+        if now >= control_due:
+            try:
+                request = urllib.request.Request(url.rsplit("/", 1)[0] + "/simulator", headers={"Authorization": auth})
+                with urllib.request.urlopen(request, timeout=2) as response:
+                    fresh = json.load(response)
+                if not isinstance(fresh.get("multiplier"), int) or not 1 <= fresh["multiplier"] <= 10:
+                    raise ValueError("Invalid multiplier")
+                if fresh.get("demoEpoch") != control.get("demoEpoch"):
+                    with demo_journal.db:
+                        demo_journal.db.execute("DELETE FROM pending")
+                control = fresh
+            except (OSError, ValueError):
+                pass
+            control_due = time.monotonic() + 2
         generated = 0
         while now >= next_due and journal.size() < 10000 and generated < 100:
             journal.generate(f"MTR-{1001 + index % meters}")
+            if control.get("demoInitialized") and demo_journal.size() < 10000:
+                epoch = hashlib.sha256(str(control["demoEpoch"]).encode()).hexdigest()[:12]
+                demo_journal.generate(f"DEMO-MTR-{epoch}-{1001 + index % meters}")
             index += 1
             generated += 1
-            next_due += 1 / rate
-        pending = journal.pending()
+            next_due += 1 / (rate * control["multiplier"])
+        pending = [(journal, False, *row) for row in journal.pending()]
+        if control.get("demoInitialized"):
+            pending += [(demo_journal, True, *row) for row in demo_journal.pending()]
         if not pending:
             time.sleep(min(0.1, max(0.001, next_due - time.monotonic())))
             continue
         failed = False
-        for id, payload, attempts in pending:
+        for active_journal, demo, id, payload, attempts in pending:
             request = urllib.request.Request(
                 url,
                 data=payload,
                 headers={
                     "Authorization": auth,
                     "Content-Type": "application/json",
-                    "X-Correlation-ID": id,
+                    "X-Correlation-ID": id if len(id) <= 100 else "demo-meter",
+                    **({"X-FileGrid-Demo": "true", "X-FileGrid-Demo-Epoch": str(control["demoEpoch"])} if demo else {}),
                 },
                 method="POST",
             )
@@ -127,9 +150,9 @@ def main():
                     and (acked + 1) % duplicate_every == 0
                     and attempts == 0
                 ):
-                    journal.retry(id)
+                    active_journal.retry(id)
                 else:
-                    journal.ack(id)
+                    active_journal.ack(id)
                     acked += 1
                     if acked % 10 == 0:
                         print(
@@ -140,19 +163,19 @@ def main():
                         )
             except urllib.error.HTTPError as error:
                 if error.code in (400, 409, 413, 422):
-                    journal.reject(id, error.code)
+                    active_journal.reject(id, error.code)
                     print(
                         json.dumps({"rejected": id, "status": error.code}), flush=True
                     )
                 else:
-                    journal.retry(id)
+                    active_journal.retry(id)
                     failed = True
             except (OSError, RuntimeError):
-                journal.retry(id)
+                active_journal.retry(id)
                 failed = True
         if failed:
             time.sleep(
-                min(30, 0.5 * 2 ** min(6, max(x[2] for x in pending)))
+                min(30, 0.5 * 2 ** min(6, max(x[4] for x in pending)))
                 + random.random() * 0.2
             )
 

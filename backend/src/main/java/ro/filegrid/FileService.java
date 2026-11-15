@@ -19,14 +19,19 @@ public class FileService {
   private final PolicyEngine policies;
   private final Storage storage;
   private final Crypto crypto;
+  private final IncidentGroupService groups;
+  private final DemoScope demoScope;
 
   public FileService(
-      JdbcTemplate db, ObjectMapper json, PolicyEngine policies, Storage storage, Crypto crypto) {
+      JdbcTemplate db, ObjectMapper json, PolicyEngine policies, Storage storage, Crypto crypto,
+      IncidentGroupService groups, DemoScope demoScope) {
     this.db = db;
     this.json = json;
     this.policies = policies;
     this.storage = storage;
     this.crypto = crypto;
+    this.groups = groups;
+    this.demoScope = demoScope;
   }
 
   public record FileData(
@@ -228,12 +233,15 @@ public class FileService {
         encrypted ? crypto.nonce() : null,
         encode(context),
         Objects.toString(org.slf4j.MDC.get("correlationId"), UUID.randomUUID().toString()));
+    demoScope.register("FILE", id);
     return id;
   }
 
-  @Transactional
-  public Map<String, Object> meter(byte[] payload, Authentication a) {
+  @Transactional(rollbackFor = IOException.class)
+  public Map<String, Object> meter(byte[] payload, Authentication a) throws IOException {
     roles(a, "METER_INGEST");
+    demoScope.lockMutation();
+    demoScope.verifyMeterEpoch();
     ApiProblem.require(
         payload.length > 0 && payload.length <= 50 * 1024,
         413,
@@ -295,7 +303,7 @@ public class FileService {
           409,
           "READING_CONFLICT",
           "Reading identity reused with different bytes");
-      return Map.of("fileId", f.id(), "duplicate", true);
+      return Map.of("fileId", f.id(), "duplicate", true, "storage", f.storage());
     }
     var d = policies.decide("METER_READING", "", "NON_SENSITIVE");
     UUID f =
@@ -308,7 +316,16 @@ public class FileService {
             a,
             Map.of(),
             d);
-    db.update("INSERT INTO blobs VALUES (?,?)", f + ".bin", payload);
+    String storageVersion = null;
+    if ("DATABASE".equals(d.storage())) db.update("INSERT INTO blobs VALUES (?,?)", f + ".bin", payload);
+    else {
+      storageVersion = storage.put(d.storage(), f + ".bin", payload);
+      try (var in = storage.open(d.storage(), f + ".bin", storageVersion)) {
+        ApiProblem.require(Integrity.sha256(in).equals(Integrity.sha256(payload)),
+            502, "INTEGRITY_FAILED", "Stored meter bytes failed verification");
+      }
+    }
+    db.update("UPDATE files SET storage_version=? WHERE id=?", storageVersion, f);
     db.update(
         "INSERT INTO meter_readings VALUES (?,?,?,?,?,?)",
         id,
@@ -317,15 +334,17 @@ public class FileService {
         Timestamp.from(at),
         energy,
         f);
+    demoScope.register("READING", id);
     db.update("UPDATE files SET status='AVAILABLE',integrity_status='VERIFIED' WHERE id=?", f);
     audit(a.getName(), "INGEST", f.toString(), "SUCCESS");
-    return Map.of("fileId", f, "duplicate", false);
+    return Map.of("fileId", f, "duplicate", false, "storage", d.storage());
   }
 
   @Transactional
   public Map<String, Object> createIncident(
       Map<String, Object> input, String key, Authentication a) {
     roles(a, "FIELD_OPERATOR", "DISPATCHER");
+    demoScope.lockMutation();
     for (String k : List.of("stationId", "zone", "eventType"))
       ApiProblem.require(
           !text(input, k, "").isBlank() && text(input, k, "").length() <= 120,
@@ -382,6 +401,20 @@ public class FileService {
         id,
         a.getName(),
         encode(input));
+    demoScope.register("INCIDENT", id);
+    UUID groupId = groups.correlate(id, demoScope.scoped());
+    db.update("INSERT INTO jobs(id,kind,resource_id) VALUES (?,'ML',?) ON CONFLICT DO NOTHING", UUID.randomUUID(), id);
+    db.update("UPDATE incidents SET ml_status='PENDING' WHERE id=?", id);
+    db.update(
+        "UPDATE jobs SET state='PENDING',attempts=0,available_at=now(),lease_until=NULL,result=NULL,last_error=NULL "
+            + "WHERE kind='ML' AND state IN ('COMPLETED','FAILED') AND resource_id IN "
+            + "(SELECT id FROM incidents WHERE group_id=? AND id<>?)",
+        groupId, id);
+    db.update(
+        "UPDATE incidents SET ml_status='PENDING',analysis=NULL WHERE id IN "
+            + "(SELECT resource_id FROM jobs WHERE kind='ML' AND state='PENDING' AND resource_id IN "
+            + "(SELECT id FROM incidents WHERE group_id=? AND id<>?))",
+        groupId, id);
     remember(a.getName(), "incident", key, hash, id);
     audit(a.getName(), "CREATE_INCIDENT", id.toString(), "SUCCESS");
     return incident(id, a);
@@ -404,6 +437,13 @@ public class FileService {
     result.put("mlStatus", row.get("ml_status"));
     result.put(
         "analysis", row.get("analysis") == null ? null : decode(row.get("analysis").toString()));
+    var groupRows = db.queryForList(
+        "SELECT i.group_id,g.status FROM incidents i LEFT JOIN incident_groups g ON g.id=i.group_id WHERE i.id=?",
+        id);
+    if (!groupRows.isEmpty()) {
+      result.put("groupId", groupRows.getFirst().get("group_id"));
+      result.put("interventionStatus", groupRows.getFirst().get("status"));
+    }
     result.put(
         "attachments",
         db
@@ -420,6 +460,7 @@ public class FileService {
   @Transactional
   public Map<String, Object> createSession(
       Map<String, Object> input, String key, Authentication a) {
+    demoScope.lockMutation();
     String category = text(input, "category", "");
     ApiProblem.require(
         Set.of("INCIDENT", "CONNECTION_DOCUMENT", "DRONE_VIDEO").contains(category),
@@ -455,6 +496,11 @@ public class FileService {
     if (category.equals("INCIDENT")) {
       UUID inc = UUID.fromString(text(input, "incidentId", ""));
       incident(inc, a);
+      boolean incidentDemo = !db.queryForList(
+          "SELECT 1 FROM demo_resources WHERE resource_type='INCIDENT' AND resource_id=?",
+          inc.toString()).isEmpty();
+      ApiProblem.require(incidentDemo == demoScope.scoped(), 422, "DEMO_SCOPE_MISMATCH",
+          "An upload must use the same data scope as its incident.");
     }
     if (category.equals("CONNECTION_DOCUMENT"))
       ApiProblem.require(
@@ -473,7 +519,7 @@ public class FileService {
     UUID f = insertFile(category, name, type, size, hash, a, input, decision),
         id = UUID.randomUUID();
     boolean multi = category.equals("DRONE_VIDEO");
-    String upload = multi ? storage.beginMultipart(f + ".bin") : null;
+    String upload = multi ? storage.beginMultipart(decision.storage(), f + ".bin") : null;
     db.update(
         "INSERT INTO upload_sessions(id,file_id,upload_mode,multipart_id) VALUES (?,?,?,?)",
         id,
@@ -585,7 +631,7 @@ public class FileService {
           "Different bytes for existing part");
       return session(id, a);
     }
-    String etag = storage.part(f.storageKey(), row.get("multipart_id").toString(), number, bytes);
+    String etag = storage.part(f.storage(), f.storageKey(), row.get("multipart_id").toString(), number, bytes);
     db.update("INSERT INTO upload_parts VALUES (?,?,?,?,?)", id, number, hash, bytes.length, etag);
     db.update("UPDATE files SET status='UPLOADING' WHERE id=?", f.id());
     db.update("UPDATE upload_sessions SET state='UPLOADING' WHERE id=?", id);
@@ -603,7 +649,7 @@ public class FileService {
           db.queryForList("SELECT * FROM upload_parts WHERE session_id=? ORDER BY part_number", id);
       long total = parts.stream().mapToLong(x -> ((Number) x.get("size_bytes")).longValue()).sum();
       ApiProblem.require(total == f.sizeBytes(), 409, "INCOMPLETE", "Not all parts are confirmed");
-      String version = storage.complete(f.storageKey(), row.get("multipart_id").toString(), parts);
+      String version = storage.complete(f.storage(), f.storageKey(), row.get("multipart_id").toString(), parts);
       db.update("UPDATE files SET storage_version=? WHERE id=?", version, f.id());
     } else
       ApiProblem.require(
@@ -627,7 +673,7 @@ public class FileService {
         "UPLOAD_STATE",
         "Cannot cancel completed upload");
     if (row.get("upload_mode").equals("MULTIPART") && !row.get("state").equals("CANCELLED"))
-      storage.abort(f.storageKey(), row.get("multipart_id").toString());
+      storage.abort(f.storage(), f.storageKey(), row.get("multipart_id").toString());
     db.update("UPDATE upload_sessions SET state='CANCELLED' WHERE id=?", id);
     db.update("UPDATE files SET status='CANCELLED' WHERE id=?", f.id());
     audit(a.getName(), "CANCEL_UPLOAD", f.id().toString(), "SUCCESS");
@@ -685,6 +731,9 @@ public class FileService {
         args.add(a.getName());
       }
     }
+    if (demoScope.scoped()) {
+      where += " AND id IN (SELECT resource_id::uuid FROM demo_resources WHERE resource_type='FILE')";
+    }
     if (category != null && !category.isBlank()) {
       where += " AND category=?";
       args.add(category);
@@ -724,18 +773,21 @@ public class FileService {
     ApiProblem.require(
         page >= 0 && size >= 1 && size <= 100, 422, "PAGINATION", "Invalid page/size");
     boolean all = role(a, "ADMIN") || role(a, "DISPATCHER");
-    String where = all ? "" : " WHERE owner_name=?";
-    Object[] countArgs = all ? new Object[] {} : new Object[] {a.getName()};
-    Long total = db.queryForObject("SELECT count(*) FROM incidents" + where, Long.class, countArgs);
-    Object[] args =
-        all
-            ? new Object[] {size, (long) page * size}
-            : new Object[] {a.getName(), size, (long) page * size};
-    var ids =
-        db.queryForList(
-            "SELECT id FROM incidents" + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            UUID.class,
-            args);
+    boolean scoped = demoScope.scoped();
+    var where = new StringBuilder(" WHERE 1=1");
+    var countArgs = new ArrayList<Object>();
+    if (!all) { where.append(" AND owner_name=?"); countArgs.add(a.getName()); }
+    if (scoped) {
+      where.append(" AND id IN (SELECT resource_id::uuid FROM demo_resources WHERE resource_type='INCIDENT')");
+    }
+    Long total = db.queryForObject(
+        "SELECT count(*) FROM incidents" + where, Long.class, countArgs.toArray());
+    var args = new ArrayList<Object>(countArgs);
+    args.add(size);
+    args.add((long) page * size);
+    var ids = db.queryForList(
+        "SELECT id FROM incidents" + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        UUID.class, args.toArray());
     return Map.of(
         "items",
         ids.stream().map(id -> incident(id, a)).toList(),
@@ -745,5 +797,30 @@ public class FileService {
         size,
         "total",
         total);
+  }
+
+  public void deleteDemoFile(UUID id) throws IOException {
+    if (db.queryForList(
+            "SELECT 1 FROM demo_resources WHERE resource_type='FILE' AND resource_id=?", id.toString())
+        .isEmpty()) return;
+    var fileRows = db.query("SELECT * FROM files WHERE id=?", mapper, id);
+    if (fileRows.isEmpty()) {
+      db.update("DELETE FROM demo_resources WHERE resource_type='FILE' AND resource_id=?", id.toString());
+      return;
+    }
+    FileData f = fileRows.getFirst();
+    var activeUploads = db.queryForList(
+        "SELECT multipart_id FROM upload_sessions WHERE file_id=? AND multipart_id IS NOT NULL "
+            + "AND state IN ('CREATED','UPLOADING','UPLOADED')", id);
+    for (var upload : activeUploads) storage.abort(f.storage(), f.storageKey(), upload.get("multipart_id").toString());
+    storage.delete(f.storage(), f.storageKey(), f.storageVersion());
+    db.update("DELETE FROM jobs WHERE resource_id=?", id);
+    db.update("DELETE FROM upload_parts WHERE session_id IN (SELECT id FROM upload_sessions WHERE file_id=?)", id);
+    db.update("DELETE FROM idempotency_records WHERE resource_id IN (SELECT id FROM upload_sessions WHERE file_id=?)", id);
+    db.update("DELETE FROM upload_sessions WHERE file_id=?", id);
+    db.update("DELETE FROM meter_readings WHERE file_id=?", id);
+    db.update("DELETE FROM blobs WHERE storage_key=?", f.storageKey());
+    db.update("DELETE FROM files WHERE id=?", id);
+    db.update("DELETE FROM demo_resources WHERE resource_type='FILE' AND resource_id=?", id.toString());
   }
 }

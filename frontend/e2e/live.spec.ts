@@ -27,7 +27,7 @@ test("live PostgreSQL/MinIO/FTP UI upload and recovery", async ({ page }) => {
   await page.getByLabel("Parolă", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Intră în platformă" }).click();
   await expect(
-    page.getByRole("heading", { name: "Rețeaua, în perspectivă." }),
+    page.getByRole("heading", { name: "Acasă." }),
   ).toBeVisible();
   await page.screenshot({ path: "../.runtime/ui-desktop.png", fullPage: true });
   await page

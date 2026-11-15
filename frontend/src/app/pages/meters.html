@@ -1,0 +1,57 @@
+<section class="page-heading">
+          <div>
+            <span class="eyebrow">INGESTIE AUTOMATĂ</span>
+            <h1 tabindex="-1">Citiri fără duplicări.</h1>
+            <p>
+              Simulator continuu · identificatori stabili · confirmare după
+              commit.
+            </p>
+          </div>
+          <span class="badge teal">DATABASE</span>
+        </section>
+        <section class="panel">
+          <filegrid-section-state [state]="vm.states()['meters']" label="citirile" (retry)="vm.refresh()" />
+          <div class="filters"><input aria-label="ID contor" placeholder="ID contor" [(ngModel)]="vm.meterFilter" (keyup.enter)="vm.filterMeters()" /><button class="secondary" (click)="vm.filterMeters()">Filtrează citirile</button></div>
+          <p>{{ vm.meterTotal() }} citiri accesibile</p>
+          <div class="table-wrap" tabindex="0" role="region" aria-label="Tabel de date">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID citire</th>
+                  <th>Contor</th>
+                  <th>Secvență</th>
+                  <th>Energie</th>
+                  <th>Moment măsurare</th>
+                  <th>Original</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (m of vm.readings(); track m.readingId) {
+                  <tr>
+                    <td class="mono">{{ m.readingId }}</td>
+                    <td>{{ m.meterId }}</td>
+                    <td>{{ m.sequenceNumber }}</td>
+                    <td>{{ m.energyKwh }} kWh</td>
+                    <td>{{ m.measuredAt | date: "dd MMM HH:mm:ss" }}</td>
+                    <td>
+                      <button class="text-button" (click)="vm.downloadReading(m)" [disabled]="vm.downloads.busy()" [attr.aria-label]="'Descarcă JSON pentru citirea ' + m.readingId">
+                        ↓ JSON
+                      </button>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="6" class="empty">
+                      {{ vm.states()['meters']?.loading ? 'Se încarcă citirile…' : vm.states()['meters']?.error ? 'Citirile sunt indisponibile momentan.' : 'Nu există citiri pentru această selecție. Așteptăm primele citiri de la simulator.' }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="pagination" aria-label="Paginare citiri"><button class="secondary" [disabled]="vm.meterPage() === 0" (click)="vm.pageList('meters', -1)">← Citiri anterioare</button><span>Pagina {{ vm.meterPage() + 1 }}</span><button class="secondary" [disabled]="(vm.meterPage() + 1) * 25 >= vm.meterTotal()" (click)="vm.pageList('meters', 1)">Citiri următoare →</button></div>
+        </section>
+        <p class="footnote">
+          Rata simulatorului se configurează prin SIMULATOR_RATE și
+          SIMULATOR_METERS. Retransmisiile păstrează exact aceiași octeți.
+        </p>

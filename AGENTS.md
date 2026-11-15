@@ -13,17 +13,17 @@ Spring Boot modular backend, Angular UI, PostgreSQL, private MinIO, separate pri
 ## Agents and Git
 At most two subagents per computer: implementation and verification, no recursive delegation. Verification reports findings without concurrently rewriting implementation files. Work sequentially if subagents are unavailable. Do not assign both agents the same files.
 
-Use feature/backend-core and feature/frontend-core, integrate through develop; main contains demonstrable snapshots. No force push, no secrets, real personal data or large fixtures. Use one remote and a common initial commit.
+Backend hardening and coordinated command-center work use explicit feature branches; verify the active branch before every commit. Frontend work may continue independently on `feature/frontend-improvements`; do not change incompatible API contracts unilaterally. No force push, secrets, real personal data or large fixtures. Use one remote and a common integration base.
 
 ## Before commit
 Run backend tests/package, frontend production build, Python tests and compose config when relevant. Record exact checks, blockers and commit in progress files. Smoke-test all categories, DB/S3/FTP routing, SHA-256 and meter deduplication before declaring MVP verified. Docker absence is a verification limitation, never a passing integration result.
 
-## Checkpoint and stop — 2026-11-14
+## Active checkpoint — 2026-11-15
 
-The user explicitly requested final verification, documentation, one local Git checkpoint and a non-force push attempt, followed by stopping. Do not autonomously implement more features after this checkpoint. A later explicit task is required to resume.
+Delivery target: `main`, integrated through a PR from `feature/demo-command-center`. It includes the persistent live policy API/UI, all 12 category/storage combinations and bounded dispatcher-map layout. The minimum Compose stack is available at the isolated review URL documented in `VALIDATION.md`. Do not infer that work present only on `feature/backend-hardening` is merged here.
 
-Integration branch: develop. Match its exact SHA on both machines before branching. See docs/HANDOFF_SECOND_COMPUTER.md, docs/VALIDATION.md and task lists. BACKEND also owns .github/ CI changes.
+Before claiming PDF completion, consult `docs/PDF_REQUIREMENTS_REVIEW.md`: 10× isolation, horizontal scaling, external automatic alerts and the degraded-network/HA campaigns remain open or partial. BACKEND also owns `.github/` CI changes.
 
-Docker config validation is not a container startup test. Native verification used PostgreSQL 17, MinIO and Python FTP; vsftpd/Nginx containers still need validation. Do not overwrite an executable JAR while its Java process is running: stop it or launch an immutable runtime copy for tests.
+Docker config validation is not a container startup test. The 2026-11-15 isolated Compose run validates PostgreSQL, MinIO, vsftpd, API, gateway/frontend, simulator, ML and Prometheus on this machine. Do not overwrite an executable JAR while its Java process is running: stop it or launch an immutable runtime copy for tests.
 
-Local IDE/runtime/test artifacts and generated credentials must remain ignored. No secrets or real personal documents may be committed. HTTPS push currently needs user authentication; never ask for tokens in chat and never force push.
+Local IDE/runtime/test artifacts and generated credentials must remain ignored. No secrets or real personal documents may be committed. Use the existing authenticated Git/GitHub CLI session for delivery; never print credentials or ask for tokens in chat, and never force push.

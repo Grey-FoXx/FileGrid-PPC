@@ -5,6 +5,9 @@ RUN mvn -q dependency:go-offline
 COPY src src
 RUN mvn -q package -DskipTests
 FROM eclipse-temurin:21-jre
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 RUN useradd --uid 10001 --create-home filegrid
 WORKDIR /app
 COPY --from=build /app/target/filegrid-0.1.0.jar app.jar

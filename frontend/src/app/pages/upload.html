@@ -1,0 +1,217 @@
+<section class="page-heading">
+          <div>
+            <span class="eyebrow">INGESTIE MANUALĂ</span>
+            <h1 tabindex="-1">Încarcă date din teren.</h1>
+            <p>Politica alege destinația. FileGrid verifică integritatea.</p>
+          </div>
+        </section>
+        <div class="upload-layout single-column">
+          <section class="panel">
+            <h2>{{ vm.uploads.category === "INCIDENT" ? "Raportează o avarie" : "Detalii transfer" }}</h2>
+            <p>Completează datele, apoi adaugă opțional un fișier. Raportul apare în dispecerat după confirmarea API-ului.</p>
+            @if (vm.uploads.savedForCurrentUser().length && !vm.busy()) {
+              <div class="callout session-list">
+                <p>Transferuri salvate: restaurează contextul, apoi selectează fișierul original.</p>
+                @for (savedTransfer of vm.uploads.savedForCurrentUser(); track savedTransfer.sessionId || savedTransfer.idempotencyKey) {
+                  <button class="text-button" (click)="vm.uploads.restoreUpload(savedTransfer)">
+                    Reia {{ savedTransfer.filename }} · {{ vm.labels[savedTransfer.category] }}
+                  </button>
+                }
+              </div>
+            }
+            @if (vm.uploads.requestedResume()) {
+              <button class="text-button" (click)="vm.uploads.leaveResume()" [disabled]="vm.busy()">Renunță la selecția sesiunii</button>
+            }
+            <label
+              >Categorie<select [(ngModel)]="vm.uploads.category" [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()">
+                @if (vm.canIncidents()) {
+                  <option value="INCIDENT">Înregistrare de avarie</option>
+                }
+                @if (vm.canDocuments()) {
+                  <option value="CONNECTION_DOCUMENT">
+                    Document de racordare
+                  </option>
+                }
+                @if (vm.canIncidents()) {
+                  <option value="DRONE_VIDEO">Inspecție cu drona</option>
+                }
+              </select></label
+            >
+            @if (vm.uploads.category === "INCIDENT") {
+              <div class="incident-picker"><label
+                >Incident asociat<select
+                  [(ngModel)]="vm.uploads.incidentId"
+                  [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()"
+                >
+                  <option value="">Avarie nouă · completează datele mai jos</option>
+                  @if (vm.uploads.incidentId && !vm.uploads.hasIncident(vm.uploads.incidentId)) {
+                    <option [value]="vm.uploads.incidentId">Incident salvat · {{ vm.uploads.incidentId }}</option>
+                  }
+                  @for (i of vm.incidents(); track i.id) {
+                    <option [value]="i.id">
+                      {{ i.stationId }} · {{ i.zone }} · {{ i.id.slice(0, 8) }}
+                    </option>
+                  }
+                </select></label>
+                <button class="primary new-incident" aria-label="Adaugă un incident nou" title="Adaugă un incident nou" (click)="newIncident()" [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()">+</button></div>
+              <div class="form-row">
+                <label
+                  >Tip atașament<select
+                    [(ngModel)]="vm.uploads.attachmentType"
+                    [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()"
+                  >
+                    <option value="BINARY">Document / diagnostic</option>
+                    <option value="LEGACY_LOG">Log legacy</option>
+                  </select></label
+                ><label
+                  >Sensibilitate<select
+                    [(ngModel)]="vm.uploads.sensitivity"
+                    [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()"
+                  >
+                    <option value="SENSITIVE">Sensibil</option>
+                    <option value="NON_SENSITIVE">Nesensibil</option>
+                  </select></label
+                >
+              </div>
+            }
+            @if (vm.uploads.category === "CONNECTION_DOCUMENT") {
+              <div class="form-row">
+                <label
+                  >ID cerere<input id="application-id" required
+                    [(ngModel)]="vm.uploads.applicationId"
+                    [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()" /></label
+                ><label
+                  >Tip document<input id="document-type" required
+                    [(ngModel)]="vm.uploads.documentType"
+                    [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()"
+                /></label>
+              </div>
+              <p class="callout">
+                Documentul este criptat înainte de stocare. Folosește exclusiv
+                documente fictive.
+              </p>
+            }
+            @if (vm.uploads.category === "DRONE_VIDEO") {
+              <p class="callout">
+                Transfer pe bucăți de 8 MiB. Sesiunea este păstrată pe server;
+                reselectează același fișier pentru reluare.
+              </p>
+            }
+          @if (vm.canIncidents() && vm.uploads.category === "INCIDENT" && !vm.uploads.incidentId) {
+            <section class="incident-fields">
+              <span class="eyebrow">FLUX AVARII</span>
+              <h2>Descrie avaria</h2>
+              <p>Metadatele devin vizibile înainte de analiza atașamentului.</p>
+              <div class="form-row">
+                <label>Stație<input id="station-id" required [(ngModel)]="vm.uploads.stationId" /></label
+                ><label>Zonă<input id="incident-zone" required [(ngModel)]="vm.uploads.zone" /></label>
+              </div>
+              <label>Tip eveniment<input id="event-type" required [(ngModel)]="vm.uploads.eventType" /></label>
+              <div class="form-row">
+                <label
+                  >Severitate (1–5)<input
+                    type="number"
+                    id="severity"
+                    required
+                    step="1"
+                    min="1"
+                    max="5"
+                    [(ngModel)]="vm.uploads.severity" /></label
+                ><label
+                  >Clienți afectați<input
+                    type="number"
+                    id="affected-customers"
+                    required
+                    min="0"
+                    step="1"
+                    [(ngModel)]="vm.uploads.affectedCustomers"
+                /></label>
+              </div>
+              <div class="form-row">
+                <label
+                  >Latitudine<input
+                    type="number"
+                    id="latitude" min="-90" max="90" step="any" required
+                    [(ngModel)]="vm.uploads.latitude" /></label
+                ><label
+                  >Longitudine<input type="number" id="longitude" min="-180" max="180" step="any" required [(ngModel)]="vm.uploads.longitude"
+                /></label>
+              </div>
+              <label class="checkbox"
+                ><input type="checkbox" [(ngModel)]="vm.uploads.safetyCritical" />Incident
+                critic de siguranță</label
+              ><button
+                class="secondary"
+                (click)="vm.uploads.createIncident()"
+                [disabled]="vm.busy() || !!vm.uploads.recovery() || !!vm.uploads.requestedResume()"
+              >
+                + Creează incident
+              </button>
+            </section>
+          }
+            <label class="dropzone"
+              ><span class="upload-symbol">↑</span
+              ><strong>{{
+                vm.uploads.file?.name || "Alege fișierul pentru transfer"
+              }}</strong
+              ><small>{{
+                vm.uploads.file
+                  ? vm.bytes(vm.uploads.file.size)
+                  : "Click pentru selectare · transfer exclusiv
+            prin FileGrid"
+              }}</small
+              ><input
+                type="file"
+                aria-label="Fișier pentru transfer"
+                (change)="vm.uploads.selectFile($event)"
+                [disabled]="vm.busy()"
+            /></label>
+            @if (vm.uploads.uploadLabel()) {
+              <div class="progress-label" aria-live="polite">
+                <span>{{ vm.uploads.uploadLabel() }}</span
+                ><strong>{{ vm.uploads.progress() }}%</strong>
+              </div>
+              <progress aria-label="Progres încărcare" [attr.aria-valuetext]="vm.uploads.uploadLabel()" [value]="vm.uploads.progress()" max="100"></progress>
+            }
+            @if (vm.uploads.checksum()) {
+              <div class="hash">
+                <span>SHA-256 ORIGINAL</span><code>{{ vm.uploads.checksum() }}</code>
+              </div>
+            }
+            <div class="actions">
+              <button
+                class="primary"
+                (click)="submit()"
+                [disabled]="
+                  vm.busy() || !!vm.uploads.recovery() || (!vm.uploads.file && (vm.uploads.category !== 'INCIDENT' || !!vm.uploads.incidentId))
+                "
+              >
+                {{
+                  vm.busy() ? "Transfer în curs…" : vm.uploads.category === "INCIDENT" && !vm.uploads.incidentId ? "Raportează avaria" : "Încarcă / reia transferul →"
+                }}
+              </button>
+              @if (vm.busy() && !vm.uploads.cancelling()) {
+                <button class="secondary" (click)="vm.uploads.pause()">{{ vm.uploads.uploadPhase() === 'verifying' ? 'Oprește urmărirea' : 'Pauză' }}</button>
+              }
+              @if (vm.uploads.activeSession(); as session) {
+                @if (!['AVAILABLE', 'VERIFYING', 'CANCELLED'].includes(session.status) && !vm.uploads.recovery()) {
+                  <button class="secondary" (click)="vm.uploads.cancelUpload()" [disabled]="vm.uploads.cancelling()">
+                    {{ vm.uploads.cancelling() ? 'Se anulează…' : 'Anulează transferul' }}
+                  </button>
+                }
+              }
+              @if (vm.uploads.recovery(); as state) {
+                <p>{{ state.reason }}</p>
+                <button class="secondary" (click)="vm.uploads.restartUpload()" [disabled]="vm.busy()">Începe o sesiune nouă</button>
+              }
+            </div>
+            <button
+              class="text-button muted"
+              (click)="vm.uploads.clearSessions()"
+              [disabled]="vm.busy()"
+            >
+              Elimină referințele locale ale contului
+            </button>
+          </section>
+
+        </div>
