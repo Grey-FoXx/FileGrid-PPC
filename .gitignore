@@ -9,6 +9,7 @@
 *.pyc
 *.sqlite*
 *.mp4
+!demo-videos/*.mp4
 *.mkv
 *.log
 .DS_Store
