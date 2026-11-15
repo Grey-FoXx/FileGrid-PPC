@@ -34,6 +34,9 @@ class DemoService {
     var result = new LinkedHashMap<String, Object>();
     boolean enabled = scope.enabled();
     result.put("enabled", enabled);
+    result.put("flow", db.queryForMap("SELECT multiplier FROM demo_flow_control WHERE id=1"));
+    result.put("notifications", db.queryForList("SELECT id,code,message,synthetic,created_at AS \"createdAt\" FROM demo_notifications ORDER BY created_at DESC LIMIT 10"));
+    result.put("integrityProbes", db.queryForList("SELECT file_id AS \"fileId\",state,detail,updated_at AS \"updatedAt\" FROM demo_integrity_probes ORDER BY created_at DESC LIMIT 5"));
     if (!enabled) {
       result.put("initialized", false);
       result.put("mode", "NORMAL");
@@ -51,7 +54,8 @@ class DemoService {
     boolean initialized = state.get("initialized_at") != null;
     result.put("initialized", initialized);
     result.put("mode", mode);
-    result.put("generating", initialized && mode.equals("STORM") && incidents < MAX_INCIDENTS);
+    result.put("generating", initialized);
+    result.put("fileFeedLimited", fileCount >= 2000);
     result.put("seedVersion", state.get("seed_version"));
     result.put("seedCounts", Map.of("incidents", incidents, "files", fileCount, "readings", readings));
     result.put("maxIncidents", MAX_INCIDENTS);
@@ -118,6 +122,8 @@ class DemoService {
     for (String id : readingIds) db.update("DELETE FROM meter_readings WHERE reading_id=?", id);
     db.update("DELETE FROM operations WHERE demo_scope=TRUE");
     db.update("DELETE FROM demo_resources");
+    db.update("DELETE FROM demo_notifications WHERE synthetic=TRUE");
+    db.update("UPDATE demo_flow_control SET multiplier=1,next_files_at=now()+interval '45 seconds' WHERE id=1");
     db.update("UPDATE demo_state SET mode='NORMAL',initialized_at=NULL,seed_version=NULL,generation_counter=0 WHERE id=1");
   }
 
@@ -147,6 +153,31 @@ class DemoService {
       return null;
     });
     db.update("UPDATE demo_state SET generation_counter=? WHERE id=1", sequence);
+  }
+
+  @Scheduled(fixedDelayString = "${filegrid.demo-feed-delay-ms:5000}")
+  @Transactional
+  public void mixedFeedTick() {
+    lock();
+    var state = db.queryForMap("SELECT initialized_at FROM demo_state WHERE id=1 FOR UPDATE");
+    if (state.get("initialized_at") == null || count("FILE") >= 2000) return;
+    var due = db.queryForList("UPDATE demo_flow_control SET next_files_at=now()+make_interval(secs => 45.0/multiplier) WHERE id=1 AND next_files_at<=now() RETURNING multiplier");
+    if (due.isEmpty()) return;
+    scope.asDemo(() -> {
+      Authentication actor = adminIdentity("demo-continuous");
+      int sequence = Math.toIntExact(count("INCIDENT")) + 1;
+      createStormIncident(sequence + 100000, actor);
+      try {
+        byte[] document = ("Synthetic connection application " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
+        upload(actor, "CONNECTION_DOCUMENT", "demo-continuous-connection.txt", "text/plain", document,
+            Map.of("applicationId", "DEMO-CONTINUOUS", "documentType", "SYNTHETIC_PLAN", "demo", true), false);
+        int size = new int[] {256 * 1024, 1024 * 1024, 2 * 1024 * 1024}[sequence % 3];
+        byte[] video = new byte[size]; new Random(sequence).nextBytes(video);
+        upload(actor, "DRONE_VIDEO", "demo-continuous-inspection.bin", "application/octet-stream", video,
+            Map.of("stationId", "DEMO-DRONE", "zone", "Banat", "demo", true), true);
+      } catch (IOException e) { throw new DemoSeedFailure(e); }
+      return null;
+    });
   }
 
   private void seedReadings(Authentication a) {
@@ -210,7 +241,7 @@ class DemoService {
     }
   }
 
-  private void upload(Authentication a, String category, String name, String type, byte[] bytes,
+  private UUID upload(Authentication a, String category, String name, String type, byte[] bytes,
       Map<String, Object> context, boolean multipart) throws IOException {
     var request = new LinkedHashMap<String, Object>(context);
     request.put("category", category); request.put("filename", name); request.put("contentType", type);
@@ -227,6 +258,7 @@ class DemoService {
     UUID fileId = UUID.fromString(response.get("fileId").toString());
     metrics.record(category, files.raw(fileId).storage(), multipart ? "demo_multipart_upload" : "demo_upload", started, bytes.length, true);
     files.complete(id, a);
+    return fileId;
   }
 
   private void createStormIncident(int n, Authentication a) {
@@ -234,11 +266,11 @@ class DemoService {
     double[][] coords = {{44.18, 28.65}, {44.43, 26.10}, {45.75, 21.23}};
     int region = (n - 1) % zones.length;
     var input = new LinkedHashMap<String, Object>();
-    input.put("stationId", "DEMO-STORM-" + n); input.put("zone", zones[region]);
-    input.put("eventType", "STORM_FEEDER_ALERT"); input.put("severity", 1 + n % 5);
-    input.put("affectedCustomers", 20 + n * 3); input.put("latitude", coords[region][0] + (n % 4) * 0.002);
+    input.put("stationId", (n >= 100000 ? "DEMO-FLOW-" : "DEMO-STORM-") + n); input.put("zone", zones[region]);
+    input.put("eventType", n >= 100000 ? "FIELD_REPORT" : "STORM_FEEDER_ALERT"); input.put("severity", 1 + n % 5);
+    input.put("affectedCustomers", 20 + (n % 1000) * 3); input.put("latitude", coords[region][0] + (n % 4) * 0.002);
     input.put("longitude", coords[region][1] + (n % 4) * 0.002); input.put("safetyCritical", n % 9 == 0);
-    input.put("occurredAt", Instant.now().toString()); input.put("demoSet", "storm");
+    input.put("occurredAt", Instant.now().toString()); input.put("demoSet", n >= 100000 ? "continuous" : "storm");
     var created = files.createIncident(input, "demo-storm-" + n, a);
     try {
       Map<String, Object> context = new LinkedHashMap<>();

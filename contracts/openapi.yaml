@@ -1089,7 +1089,8 @@
           "200": {
             "description": "Demo status"
           }
-        }
+        },
+        "description": "Always available; no environment flag required. Status includes flow.multiplier, bounded notifications, integrityProbes and fileFeedLimited. Probe recovery applies only to generated synthetic fixtures with an independent recovery copy; no repair guarantee for arbitrary user files."
       }
     },
     "/demo/initialize": {
@@ -1205,6 +1206,85 @@
             }
           }
         }
+      }
+    },
+    "/simulator": {
+      "get": {
+        "summary": "Read actual multiplier and demo epoch (ADMIN, DISPATCHER, METER_INGEST)",
+        "responses": {
+          "200": {
+            "description": "Current control or probe result"
+          },
+          "403": {
+            "description": "Role not permitted"
+          }
+        },
+        "operationId": "get_simulator"
+      }
+    },
+    "/demo/volume": {
+      "put": {
+        "summary": "Set durable shared simulator multiplier 1 to 10 (ADMIN)",
+        "responses": {
+          "200": {
+            "description": "Current control or probe result"
+          },
+          "403": {
+            "description": "Role not permitted"
+          },
+          "422": {
+            "description": "Invalid multiplier"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "multiplier"
+                ],
+                "properties": {
+                  "multiplier": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "put_demo_volume"
+      }
+    },
+    "/demo/notifications/test": {
+      "post": {
+        "summary": "Publish an explicitly synthetic in-app team notification (ADMIN)",
+        "responses": {
+          "200": {
+            "description": "Current control or probe result"
+          },
+          "403": {
+            "description": "Role not permitted"
+          }
+        },
+        "operationId": "post_demo_notifications_test"
+      }
+    },
+    "/demo/integrity-probes": {
+      "post": {
+        "summary": "Create an isolated S3 corruption and automatic recovery fixture (ADMIN)",
+        "responses": {
+          "200": {
+            "description": "Current control or probe result"
+          },
+          "403": {
+            "description": "Role not permitted"
+          }
+        },
+        "operationId": "post_demo_integrity_probes"
       }
     }
   },

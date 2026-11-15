@@ -36,6 +36,9 @@ export interface Analysis {
   timestamp?: string;
 }
 export interface DemoState {
+ flow?: {multiplier:number}; fileFeedLimited?:boolean;
+ notifications?: {id:string;message:string;synthetic:boolean;createdAt:string}[];
+ integrityProbes?: {fileId:string;state:string;detail:string;updatedAt:string}[];
  enabled: boolean; initialized: boolean; mode: 'NORMAL'|'STORM'; generating: boolean; seedVersion: string | number;
 }
 export type InterventionStatus = 'NEW'|'DISPATCHED'|'RESOLVED';

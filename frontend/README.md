@@ -92,17 +92,27 @@ Navigarea păstrează Acasă, Încarcă fișiere, Fișiere, Dispecerat, Citiri c
 
 ## Demo cu date persistente și intervenții
 
-Versiunea actuală extinde API-ul pentru scenariul cerut, fără a schimba routing-ul sau garanțiile de integritate. Activarea este explicită: adaugă `FILEGRID_DEMO_ENABLED=true` în fișierul local ignorat `.runtime/services.env`, reconstruiește/repornește API-ul și worker-ul ML, apoi autentifică-te ca ADMIN. Prima autentificare inițializează setul o singură dată; reload-ul nu îl multiplică.
+Versiunea actuală extinde API-ul pentru scenariul cerut, fără a schimba routing-ul sau garanțiile de integritate. Demo este disponibil permanent, fără flag în `.env`. După `git pull`, rulează `./scripts/start.sh` pentru a reconstrui serviciile și autentifică-te ca ADMIN. Prima autentificare inițializează setul o singură dată; reload-ul nu îl multiplică.
 
 - Set inițial: 6 rapoarte în Dobrogea/Muntenia/Banat, 4 citiri, 13 fișiere distribuite între Database, S3 și FTP; include documente criptate și fișiere binare sintetice în categoria dronă de 256 KiB, 9 MiB și 17 MiB, ultimele având mai multe părți reale. Acestea testează transferul; nu sunt clipuri video redabile sau un benchmark pentru fișiere >1 GB.
-- **Normal/Storm** schimbă starea reală a generatorului backend. Storm produce progresiv rapoarte și atașamente, cu plafon de 40 de incidente demo. Modul Normal oprește generarea; nu șterge rapoartele deja produse. Harta se actualizează la o secundă în Storm și la cinci secunde în mod obișnuit.
+- **Normal/Storm** schimbă starea reală a generatorului backend. Storm produce progresiv rapoarte și atașamente, cu plafon de 40 de incidente demo. Normal oprește rafala Storm, dar păstrează contoarele continue și loturile mixte periodice; nu șterge rapoartele deja produse. Harta se actualizează la o secundă în Storm și la cinci secunde în mod obișnuit.
 - **Reset demo**, dreapta sus, șterge exclusiv resursele înregistrate în setul demo și generează din nou setul inițial. Datele create anterior rămân intacte. Navigarea între Demo și Toate datele schimbă explicit scope-ul; setul demo este sintetic, dar este stocat și procesat efectiv de backend.
 - Avariile au trei statusuri persistente, distincte de fișiere și ML: **Nouă → Echipaj trimis → Rezolvată**. Dispecerul/adminul acționează asupra întregului grup. Rapoartele noi compatibile se pot alătura grupurilor încă deschise; grupurile rezolvate nu se redeschid automat. Harta ascunde grupurile rezolvate; istoricul poate fi afișat separat.
 - Gruparea provizorie din metadate este completată asincron de Modelul 2 (DBSCAN), care transmite acum identificatorii membrilor; backend-ul păstrează un UUID stabil pentru intervenție și validează compatibilitatea/scopul înaintea unirii. Etichetele numerice locale nu mai sunt utilizate drept identitate globală. Modelele sunt în continuare sintetice, iar proximitatea nu dovedește cauza fizică a defecțiunii. Nu există LLM introdus în acest flux.
 - „+” lângă Incident asociat începe un raport nou; raportarea fără fișier rămâne permisă. Traseul fișierului este primul panou din Fișiere și citește categoria selectată direct din API, independent de filtrul/pagina catalogului. Fișierele vechi nu sunt marcate artificial drept nemăsurate doar fiindcă sunt în altă pagină.
 
-Generatorul vechi `meter-simulator` este oprit în mediul local al demonstrației pentru a evita creșterea continuă a catalogului obișnuit. Poate fi repornit explicit pentru testele simulatorului; datele/jurnalul lui nu au fost șterse. În afara scope-ului demo, API-ul păstrează comportamentul original și oferă toate datele autorizate.
+Containerul `meter-simulator` rulează continuu, cu jurnale separate pentru fluxul obișnuit și Demo. Bara globală 1×–10× schimbă multiplicatorul real al ratei `SIMULATOR_RATE` fără restart (poll de control la aproximativ 2 secunde). În afara scope-ului demo, API-ul păstrează comportamentul original și oferă toate datele autorizate.
 
 ## Verificarea cerințelor PDF
 
 Vezi [auditul complet actual](AUDIT_PDF.md), cu verificări reale, limite și controale de testare propuse (neimplementate). Pornirea pe mașină curată cu o singură comandă are încă un blocaj de readiness și nu este marcată ca validată.
+
+## Demonstrație continuă și probe — 2026-11-15
+
+- Bara de volum este sus, în toate tab-urile ADMIN/DISPATCHER; numai ADMIN o modifică. Este comună tuturor calculatoarelor conectate la același API. Contoarele din Demo continuă și în Normal. „Toate datele” include și Demo, nu este un filtru exclusiv de producție.
+- Generatorul backend adaugă în Demo câte un raport cu atașament, un document criptat și un obiect de inspecție la circa 45 secunde / multiplicator (tick la 5 secunde), când serviciile sunt disponibile. Sunt fixtures sintetice compacte, nu videoclipuri reprezentative de >1 GB; upload-ul manual rămâne conform PDF-ului. La 2000 de fișiere demo se oprește lotul mixt până la Reset. Contoarele continuă.
+- Acasă → **Simulează notificare de risc**: mesaj sintetic persistent, vizibil și altor administratori/dispeceri. Erorile reale de operații din ultimul minut produc un semnal server automat, limitat la unul/minut. Acestea sunt notificări în aplicație; nu email/SMS/webhook și nu monitorizarea tuturor garanțiilor business.
+- Acasă → **Testează corupere și recuperare automată**: creează propriul fixture S3, păstrează bytes originali în Database și injectează coruperea. Worker-ul detectează SHA-256 diferit, blochează conținutul și restaurează automat copia verificată. Sunt afișate etapele INJECTED → DETECTED → RECOVERED; Fișiere permite download-ul verificat după recuperare. Nu acceptă un fișier existent ca țintă și nu pretinde redundanță pentru toate upload-urile.
+- Reset păstrează datele din afara Demo, restaurează volumul 1× și curăță probele/mesajele demo. Citirile noi reîncep apoi automat.
+
+Vezi [scenariul de prezentare și limitele probelor](../docs/DEMO_PRESENTATION.md) pentru >1 GB, securitate și căderea unui storage.

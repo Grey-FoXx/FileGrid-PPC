@@ -65,3 +65,6 @@ Validation: **67 browser tests, 6 Java tests and 4 ML tests passed**, production
 - Dense map uses bounded in-country marker placement and clearly identified visual aggregation; all real intervention IDs/counts/actions remain separate. Added 77-report coastline regression, selection and reduced-motion checks.
 - Current production full browser run: **74 passed**, Java **7 passed**, simulator **2 passed**. Current real four-category/three-storage smoke and 1.2GB bounded-memory transport checks pass.
 - Complete per-requirement audit is `frontend/AUDIT_PDF.md`. Future UI test controls are suggestions only. One-command clean startup remains an eliminatory blocker, not silently marked complete; several nonfunctional guarantees still require external campaigns.
+
+
+2026-11-15: Implemented permanent Demo, global real simulator target-volume control 1×–10×, continuous scoped readings and periodic mixed-category fixtures, accessible rolling counters, shared server notifications and isolated automatic corruption-recovery proof. See `docs/DEMO_PRESENTATION.md` for hands-on demo steps and unresolved nonfunctional proofs.

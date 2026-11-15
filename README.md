@@ -27,7 +27,7 @@ Pentru o instanță de verificare izolată, fără ștergerea volumelor existent
 - Drone: multipart de 8 MiB prin API, părți persistente, reluare după restart și SHA-256 complet.
 - ML: Random Forest + DBSCAN + reguli explicabile; disponibilitatea fișierelor rămâne independentă de ML. Date sintetice, fără validare operațională.
 
-Politicile sunt în `config/storage-policies.yaml`; aplicare prin `docker compose restart api`. Schimbările afectează sesiuni noi. Ratele simulatorului se configurează cu `SIMULATOR_RATE`, `SIMULATOR_METERS` și, pentru retransmisii, `SIMULATOR_DUPLICATE_EVERY` în mediul serviciului.
+Politica activă se modifică live prin UI/API și este persistentă în PostgreSQL; `config/storage-policies.yaml` rămâne bootstrap și configurația de reset. Schimbările afectează sesiuni noi. Ratele simulatorului se configurează cu `SIMULATOR_RATE`, `SIMULATOR_METERS` și, pentru retransmisii, `SIMULATOR_DUPLICATE_EVERY` în mediul serviciului.
 
 ## Verificări reproductibile
 
@@ -61,3 +61,5 @@ Un singur repository: https://github.com/Grey-FoXx/FileGrid-PPC. Branch de integ
 Citește [AGENTS.md](AGENTS.md), [raportul pentru calculatorul 2](docs/HANDOFF_SECOND_COMPUTER.md), [contractul OpenAPI](contracts/openapi.yaml), [arhitectura](docs/ARCHITECTURE.md), [modelul de date](docs/DATA_MODEL.md), [milestone-urile](docs/MILESTONES.md) și [task-urile frontend](docs/FRONTEND_TASKS.md).
 
 Cerințele originale sunt în `docs/requirements/`. Ele sunt documente de referință; instrucțiunile de execuție ale sesiunii și regulile din AGENTS.md au prioritate pentru agenți.
+
+Demo este disponibil permanent, fără flag de activare. După actualizarea codului rulează `./scripts/start.sh` pentru rebuild/migrații. Bara globală 1×–10× controlează rata simulatorului real; datele sintetice Demo au scope separat, iar „Toate datele” le include și pe acestea. [Ghidul demonstrației](docs/DEMO_PRESENTATION.md) separă probele live de limitele încă nevalidate.

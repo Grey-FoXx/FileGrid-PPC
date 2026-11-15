@@ -111,6 +111,15 @@
           </button>
         </div>
       </header>
+      @if(vm.demo()?.enabled && vm.canStats()){
+        <section class="flow-toolbar" aria-label="Volum simulator">
+          <label for="flow-volume">Flux contoare <strong>{{vm.demo()?.flow?.multiplier ?? 1}}×</strong></label>
+          <input id="flow-volume" aria-label="Volum simulator 1 până la 10" type="range" min="1" max="10" step="1" [value]="vm.demo()?.flow?.multiplier ?? 1" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (change)="vm.setDemoVolume(+$any($event.target).value)" />
+          <small>1× normal · 10× vârf · rată reală, comună simulatorului Live și Demo. Aplicare în aproximativ 2 secunde; rata atinsă depinde de capacitate.</small>
+          <small>Demo generează fixtures sintetice continuu. „Toate datele” include și Demo; cele trei categorii manuale pot fi încărcate în continuare din UI.</small>
+          @if(vm.demo()?.fileFeedLimited){<small>Fluxul de fișiere demo a atins limita de 2000. Reset demo îl repornește.</small>}
+        </section>
+      }
       @if (vm.error()) {
         <div class="alert error" role="alert" tabindex="-1" data-error-summary>
           {{ vm.error()

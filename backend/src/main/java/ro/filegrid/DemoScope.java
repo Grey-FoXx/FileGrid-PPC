@@ -1,33 +1,38 @@
 package ro.filegrid;
 
 import java.util.function.Supplier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-/** Explicit, opt-in data scope for the synthetic demo workspace. */
+/** Explicit request scope for the always-available synthetic demo workspace. */
 @Component
 class DemoScope {
   private static final ThreadLocal<Boolean> OVERRIDE = new ThreadLocal<>();
   private final JdbcTemplate db;
-  private final boolean enabled;
 
-  DemoScope(JdbcTemplate db, @Value("${filegrid.demo-enabled:false}") boolean enabled) {
+  DemoScope(JdbcTemplate db) {
     this.db = db;
-    this.enabled = enabled;
   }
 
-  boolean enabled() { return enabled; }
+  boolean enabled() { return true; }
 
   boolean scoped() {
-    if (!enabled) return false;
     Boolean override = OVERRIDE.get();
     if (override != null) return override;
     var attributes = RequestContextHolder.getRequestAttributes();
     return attributes instanceof ServletRequestAttributes servlet
         && "true".equalsIgnoreCase(servlet.getRequest().getHeader("X-FileGrid-Demo"));
+  }
+
+  void verifyMeterEpoch() {
+    if (!scoped()) return;
+    var attributes = RequestContextHolder.getRequestAttributes();
+    if (attributes instanceof ServletRequestAttributes servlet) {
+      String epoch = servlet.getRequest().getHeader("X-FileGrid-Demo-Epoch");
+      if (epoch != null) ApiProblem.require(epoch.equals(db.queryForObject("SELECT initialized_at::text FROM demo_state WHERE id=1",String.class)),409,"DEMO_EPOCH_CHANGED","Demo was reset; refresh simulator configuration");
+    }
   }
 
   <T> T asDemo(Supplier<T> action) {

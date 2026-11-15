@@ -2,10 +2,11 @@ import { Component, inject } from "@angular/core";
 import { CommonModule } from "@angular/common";
 import { FormsModule } from "@angular/forms";
 import { WorkspaceStore } from "../workspace";
+import { RollingNumberComponent } from "../rolling-number";
 import { SectionStateComponent } from "../section-state";
 @Component({
   selector: "filegrid-dashboard", standalone: true,
-  imports: [CommonModule, FormsModule, SectionStateComponent],
+  imports: [CommonModule, FormsModule, SectionStateComponent, RollingNumberComponent],
   templateUrl: "./dashboard.html",
   host: { style: "display:block; min-width:0" },
 })

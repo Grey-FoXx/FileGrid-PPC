@@ -49,8 +49,9 @@ class ApiIntegrationTest {
     p.add("spring.datasource.url", () -> pg.getJdbcUrl("postgres", "postgres"));
     p.add("spring.datasource.username", () -> "postgres");
     p.add("filegrid.verify-initial-delay", () -> "3600000");
-    p.add("filegrid.demo-enabled", () -> "true");
     p.add("filegrid.demo-storm-delay-ms", () -> "60000");
+    p.add("filegrid.demo-feed-delay-ms", () -> "3600000");
+    p.add("filegrid.demo-probe-delay-ms", () -> "3600000");
     p.add("spring.datasource.password", () -> "");
     p.add("filegrid.accounts-file", () -> root.resolve("accounts").toString());
     p.add("filegrid.encryption-key-file", () -> root.resolve("key").toString());
@@ -64,6 +65,8 @@ class ApiIntegrationTest {
   @Autowired ObjectMapper json;
   @Autowired JdbcTemplate db;
   @Autowired JobService jobs;
+  @Autowired DemoService demoService;
+  @Autowired DemoExperience demoExperience;
   @MockitoBean Storage storage;
   final Map<String, byte[]> stored = new ConcurrentHashMap<>();
   final Map<Integer, byte[]> parts = new ConcurrentHashMap<>();
@@ -73,6 +76,8 @@ class ApiIntegrationTest {
     db.execute("TRUNCATE TABLE operations,audit_events,jobs,upload_parts,upload_sessions,idempotency_records,"
         + "meter_readings,blobs,files,incidents,incident_groups,demo_resources RESTART IDENTITY CASCADE");
     db.update("UPDATE demo_state SET mode='NORMAL',initialized_at=NULL,seed_version=NULL,generation_counter=0 WHERE id=1");
+    db.update("DELETE FROM demo_notifications");
+    db.update("UPDATE demo_flow_control SET multiplier=1,next_files_at=now()+interval '1 hour' WHERE id=1");
     stored.clear();
     parts.clear();
     when(storage.put(anyString(), anyString(), any(byte[].class)))
@@ -351,6 +356,32 @@ class ApiIntegrationTest {
     assertEquals(0, call(as(get("/api/v1/incident-groups"), "dispatcher"), 200).get("items").findValuesAsText("id").stream().filter(group::equals).count());
     JsonNode history = call(as(get("/api/v1/incident-groups?includeResolved=true"), "dispatcher"), 200);
     assertTrue(history.get("items").findValuesAsText("id").contains(group));
+  }
+
+  @Test
+  void alwaysAvailableDemoControlsRealFeedAndRecoversOnlyItsOwnFixture() throws Exception {
+    assertTrue(call(as(get("/api/v1/me"), "admin"),200).get("features").get("demo").asBoolean());
+    call(as(put("/api/v1/demo/volume"),"field").contentType("application/json").content("{\"multiplier\":10}"),403);
+    call(as(put("/api/v1/demo/volume"),"admin").contentType("application/json").content("{\"multiplier\":11}"),422);
+    call(as(put("/api/v1/demo/volume"),"admin").contentType("application/json").content("{\"multiplier\":1.5}"),422);
+    call(as(put("/api/v1/demo/volume"),"admin").contentType("application/json").content("{\"multiplier\":10}"),200);
+    assertEquals(10,call(as(get("/api/v1/simulator"),"meter"),200).get("multiplier").asInt());
+    call(as(post("/api/v1/demo/initialize"),"admin"),200);
+    db.update("UPDATE demo_flow_control SET next_files_at=now()-interval '1 second' WHERE id=1");
+    long before=db.queryForObject("SELECT count(*) FROM files",Long.class);
+    demoService.mixedFeedTick();
+    assertEquals(before+3,db.queryForObject("SELECT count(*) FROM files",Long.class));
+    call(as(post("/api/v1/demo/notifications/test"),"admin"),200);
+    assertTrue(call(as(get("/api/v1/demo"),"dispatcher"),200).get("notifications").get(0).get("synthetic").asBoolean());
+    call(as(post("/api/v1/demo/integrity-probes"),"field"),403);
+    JsonNode probe=call(as(post("/api/v1/demo/integrity-probes"),"admin"),200);
+    UUID id=UUID.fromString(probe.get("fileId").asText());
+    demoExperience.recoverTick();
+    assertEquals("CORRUPTED",db.queryForObject("SELECT status FROM files WHERE id=?",String.class,id));
+    demoExperience.recoverTick();
+    assertEquals("RECOVERED",db.queryForObject("SELECT state FROM demo_integrity_probes WHERE file_id=?",String.class,id));
+    mvc.perform(as(get("/api/v1/files/"+id+"/content"),"admin")).andExpect(status().isOk());
+    assertEquals("AVAILABLE",db.queryForObject("SELECT status FROM files WHERE id=?",String.class,id));
   }
 
   @Test

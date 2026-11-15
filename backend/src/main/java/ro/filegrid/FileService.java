@@ -241,6 +241,7 @@ public class FileService {
   public Map<String, Object> meter(byte[] payload, Authentication a) {
     roles(a, "METER_INGEST");
     demoScope.lockMutation();
+    demoScope.verifyMeterEpoch();
     ApiProblem.require(
         payload.length > 0 && payload.length <= 50 * 1024,
         413,

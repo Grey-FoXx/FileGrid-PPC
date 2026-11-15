@@ -77,3 +77,8 @@ Nu au fost șterse datele sau resetat demo-ul utilizatorului pentru acest audit.
 - Nu s-au rulat în acest checkpoint campanii 10× pe categorii, două instanțe API, defecte de host/DB, pierderi de pachete, audit complet de secrete în istoric sau livrare de alerte. Nu sunt marcate drept trecute.
 
 Verificare vizuală și geometrică suplimentară pe datele reale curente, în Toate datele: **81 rapoarte deschise / 73 intervenții**, reprezentate prin **5 marcaje vizuale**; conturul a fost verificat în browser, toate corpurile marker-elor în țară, deplasare maximă observată 60 unități SVG. Nu s-au unit intervențiile în DB. După optimizarea aglomerării, toate cele 7 cazuri dedicate politici/hartă au trecut din nou. Screenshot local: `.runtime/current-dense-map-fixed.png`.
+
+
+## Actualizare: demonstrație continuă și recuperare izolată
+
+Etapa ulterioară adaugă Demo permanent, controlul real al ratei simulatorului 1×–10×, citiri continue în Demo Normal, loturi mixte periodice și feed server de notificări. Mesajele de test sunt etichetate sintetice; operațiile eșuate declanșează un semnal automat. Nu este alertare externă sau acoperire completă a riscurilor din tabelul 2.1. Proba proprie S3 este coruptă și recuperată automat din bytes originali păstrați separat în Database; aceasta nu reprezintă repararea tuturor fișierelor. [Ghidul actual de prezentare](../docs/DEMO_PRESENTATION.md) înlocuiește descrierile anterioare despre citirile demo fixe și lipsa controalelor de volum/notificări.

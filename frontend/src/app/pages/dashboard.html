@@ -12,17 +12,17 @@
         <div class="stat-grid">
           <article class="stat">
             <span>Fișiere înregistrate</span
-            ><strong>{{ vm.business()?.files ?? "—" }}</strong
+            ><strong><filegrid-rolling-number [value]="vm.business()?.files" /></strong
             ><small>Toate categoriile</small>
           </article>
           <article class="stat">
             <span>Citiri de contoare</span
-            ><strong>{{ vm.business()?.readings ?? "—" }}</strong
+            ><strong><filegrid-rolling-number [value]="vm.business()?.readings" /></strong
             ><small>Identități unice, fără duplicări</small>
           </article>
           <article class="stat">
             <span>Incidente raportate</span
-            ><strong>{{ vm.business()?.incidents ?? "—" }}</strong
+            ><strong><filegrid-rolling-number [value]="vm.business()?.incidents" /></strong
             ><small
               >{{ vm.business()?.recentIncidents ?? 0 }} în ultimele 5
               minute</small
@@ -41,14 +41,31 @@
  <div class="panel-heading"><div><span class="eyebrow">NORMAL → STORM</span><h2>Controlul demonstrației</h2></div><span class="badge">DATE SINTETICE · SALVATE ÎN BACKEND</span></div>
  <div class="scenario-toggle"><button class="secondary" [class.selected]="vm.demo()?.mode === 'NORMAL'" [attr.aria-pressed]="vm.demo()?.mode === 'NORMAL'" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (click)="vm.setDemoMode('NORMAL')">Normal</button><button class="secondary" [class.selected]="vm.demo()?.mode === 'STORM'" [attr.aria-pressed]="vm.demo()?.mode === 'STORM'" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (click)="vm.setDemoMode('STORM')">Storm</button></div>
  <div class="load-preview" [class.peak]="vm.demo()?.mode === 'STORM'" aria-hidden="true">@for(n of [1,2,3,4,5,6,7,8,9,10];track n){<i [style.--n]="n"></i>}</div>
- <p aria-live="polite">{{vm.demo()?.mode === 'STORM' ? 'Storm activ în backend: rapoarte sintetice sunt introduse progresiv, stocate și analizate. Urmărește apariția și gruparea lor pe hartă.' : 'Normal: set demo compact. Datele existente din afara demo-ului sunt păstrate separat.'}}</p>
+ <p aria-live="polite">{{vm.demo()?.mode === 'STORM' ? 'Storm activ în backend: rapoarte sintetice sunt introduse progresiv, stocate și analizate. Urmărește apariția și gruparea lor pe hartă.' : 'Normal: contoare continue și un lot sintetic de avarie, document și video la aproximativ 45 de secunde (mai rapid la volum crescut).'}}</p>
  @if(vm.demo()?.generating){<p class="callout" role="status">Backend-ul generează datele demonstrației. Harta și metricile se actualizează automat.</p>}
- <p class="footnote">Valorile de mai jos provin din API și storage. Graficul de sus indică scenariul ales, nu este un benchmark. Normal oprește generarea Storm; Reset demo reface setul inițial și elimină doar datele demo.</p>
+ <p class="footnote">Valorile de mai jos provin din API și storage. Graficul de sus indică scenariul ales, nu este un benchmark. Normal oprește rafala Storm, dar păstrează fluxul mixt continuu. Reset demo reface setul inițial și elimină doar datele demo. Fișierele automate din cele trei categorii manuale sunt exclusiv pentru demonstrație; fluxul normal din PDF rămâne încărcarea prin UI.</p>
 </section>
 }
 <section class="panel" aria-label="Avertizări de business"><h2>Semnale care necesită atenție</h2>
  <div aria-live="polite">@for(risk of risks();track risk){<p class="alert error" role="status">{{risk}}</p>} @empty {<p>Nu sunt semnale de eroare în datele accesibile curent. Aceasta nu demonstrează îndeplinirea tuturor garanțiilor de business.</p>}</div>
- <p class="footnote">Avertizări locale actualizate automat din API. Notificarea echipei în afara browserului nu este expusă de API și rămâne nevalidată.</p>
+ <p class="footnote">Semnalele de mai sus sunt locale. Notificările de mai jos sunt persistate pe server și vizibile tuturor dispecerilor/administratorilor conectați. Livrarea email/webhook și acoperirea tuturor riscurilor business nu sunt implementate.</p>
+</section>
+<section class="panel" aria-label="Demonstrații verificabile">
+ <div class="panel-heading"><div><span class="eyebrow">DEMO · PROBE REALE, DATE SINTETICE</span><h2>Notificări și recuperare</h2></div></div>
+ <div class="scenario-toggle">
+  <button class="secondary" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (click)="vm.demoProbe('notification')">Simulează notificare de risc</button>
+  <button class="secondary" [disabled]="!vm.canManageDemo() || vm.demoBusy()" (click)="vm.demoProbe('integrity')">Testează corupere și recuperare automată</button>
+ </div>
+ <p>Testul de integritate creează un fișier sintetic propriu în S3, îl corupe, detectează diferența SHA-256 și îl recuperează automat dintr-o copie validă separată. Nu este o garanție de reparare a oricărui fișier și nu modifică upload-urile existente.</p>
+ <div aria-live="polite">
+ @for(probe of vm.demo()?.integrityProbes || [];track probe.fileId){
+  <article class="probe-card" [class.recovered]="probe.state==='RECOVERED'"><strong>{{probe.state==='INJECTED'?'1 · Corupere injectată':probe.state==='DETECTED'?'2 · Detectat, recuperare automată':'3 · Recuperat și verificat'}}</strong><p>{{probe.detail}}</p><small>File ID: {{probe.fileId}}</small></article>
+ }
+ @for(notification of vm.demo()?.notifications || [];track notification.id){
+  <p class="alert" role="status"><strong>{{notification.synthetic?'TEST SINTETIC':'SEMNAL AUTOMAT'}}</strong> · {{notification.message}} <small>{{notification.createdAt | date:'HH:mm:ss'}}</small></p>
+ }
+ </div>
+ <p class="footnote">Pentru &gt;1 GB: Încarcă fișiere → Inspecții dronă → selectează un fișier de peste 1 GB. Progresul și reluarea se văd aici; memoria serviciului se măsoară separat cu docker stats sau scripts/large-file-test.py. Animația nu reprezintă consumul de memorie.</p>
 </section>
         <div class="dashboard-columns">
           <section class="panel">

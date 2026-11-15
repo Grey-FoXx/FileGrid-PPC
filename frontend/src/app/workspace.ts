@@ -287,6 +287,27 @@ export class WorkspaceStore implements OnDestroy {
     }catch(e){if(generation===this.authGeneration)this.fail(e);}
     finally{if(generation===this.authGeneration)this.demoBusy.set(false);}
   }
+  async setDemoVolume(value:number){
+    if(!this.canManageDemo() || this.demoBusy())return;
+    const generation=this.authGeneration;this.demoBusy.set(true);
+    try{
+      await this.api.request('/demo/volume',{method:'PUT',body:JSON.stringify({multiplier:Number(value)})});
+      if(generation===this.authGeneration)await this.refresh(true);
+    }catch(e){if(generation===this.authGeneration)this.fail(e);}
+    finally{if(generation===this.authGeneration)this.demoBusy.set(false);}
+  }
+  async demoProbe(kind:'notification'|'integrity'){
+    if(!this.canManageDemo() || this.demoBusy())return;
+    const generation=this.authGeneration;this.demoBusy.set(true);this.error.set('');
+    try{
+      await this.api.request(kind==='notification'?'/demo/notifications/test':'/demo/integrity-probes',{method:'POST'});
+      if(generation===this.authGeneration){
+        this.notice.set(kind==='notification'?'Notificare sintetică înregistrată pe server; vizibilă echipei conectate.':'Fixture corupt creat; detectarea și recuperarea vor rula automat.');
+        await this.refresh(true);
+      }
+    }catch(e){if(generation===this.authGeneration)this.fail(e);}
+    finally{if(generation===this.authGeneration)this.demoBusy.set(false);}
+  }
   async resetDemo(){
     if(!this.canManageDemo()||this.demoBusy()||this.busy()||this.downloads.busy()) return;
     const generation=this.authGeneration;this.demoBusy.set(true);this.error.set('');
